@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using LTASBM.Kepler.Interfaces.LTASBM.v1;
 using System.Collections.Generic;
 using Relativity.API;
+using System.Data.SqlClient;
 
 namespace LTASBM.Agent
 {
@@ -13,27 +14,30 @@ namespace LTASBM.Agent
     public class LTASBillingWorker : AgentBase
     {
         private IAPILog logger;
+        private string managementDb = null;
+        private string serverName = null;
         public override string Name => "LTAS Billing Managment Worker";
 
         public override void Execute()
         {
+            logger = Helper.GetLoggerFactory().GetLogger();
             var servicesManager = Helper.GetServicesManager();
-            string dB = "EDDS1623625";
-            string serverName = @"esus02512841W05.sql-Y012.relativity.one\esus02512841W05";
+            var instanceSettingManager = Helper.GetInstanceSettingBundle();
+            IDBContext eddsDbContext;
+            eddsDbContext = Helper.GetDBContext(-1);
 
-            var keplerServiceProxy = servicesManager.CreateProxy<ILTASClient>();
+            InitializeDatabaseSettings(instanceSettingManager, eddsDbContext);
+                      
+
+            var keplerServiceProxy = servicesManager.CreateProxy<ILTASClient>(ExecutionIdentity.System);
             try
             {
-                List<LTASClient> clients = keplerServiceProxy.GetClients(dB, serverName).Result;
+                List<LTASClient> clients = keplerServiceProxy.GetClients(managementDb, serverName).Result;
             }
             catch (Exception ex)
             {
                 Exception(ex, "Failure obtaining LTAS client list.");
-            }
-            finally
-            {
-               
-            }           
+            }                  
         }
 
         public void Exception(Exception ex, string errorMessage)
@@ -42,6 +46,36 @@ namespace LTASBM.Agent
             logger.LogError(errorMessage);
             RaiseError(errorMessage, ex.ToString());
             return;
+        }
+
+        public void InitializeDatabaseSettings(IInstanceSettingsBundle instanceSettingManager, IDBContext eddsDbContext)
+        {
+            logger.LogInformation("Starting to retrieve management database variables...");
+            try
+            {
+                managementDb = "EDDS" + Convert.ToInt32(instanceSettingManager.GetUInt("LTAS Billing Management", "Management Database"));
+            }
+            catch (Exception ex)
+            {
+                Exception(ex, "Failure obtaining Management Database instance setting.");
+            }
+
+            try
+            {
+                string sql = "SELECT DbLocation FROM EDDS.eddsdbo.ExtendedCase WHERE ArtifactID @WorkspaceArtifactId";
+                SqlParameter workspaceArtifactIdParam = new SqlParameter("@WorkspaceArtifactId", System.Data.SqlDbType.Int);
+
+                serverName = (eddsDbContext.ExecuteSqlStatementAsScalar<string>(sql, workspaceArtifactIdParam));
+            }
+            catch (Exception ex)
+            {
+                Exception(ex, "Failure obtaining Management Database server location.");
+            }
+
+            if (managementDb != null && serverName != null)
+            {
+                logger.LogInformation("ManagementDb '{managementDb}' and Server '{serverName}' identified successfully", managementDb, serverName);
+            }
         }
     }
 }

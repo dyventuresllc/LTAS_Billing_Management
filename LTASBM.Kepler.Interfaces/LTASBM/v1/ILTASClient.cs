@@ -1,4 +1,5 @@
 ﻿using Relativity.Kepler.Services;
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -6,7 +7,7 @@ namespace LTASBM.Kepler.Interfaces.LTASBM.v1
 {
     [ServiceModule("LTASBM Module")]
     [RoutePrefix("LTASBM", VersioningStrategy.Namespace)]
-    public interface ILTASClient
+    public interface ILTASClient: IDisposable
     {
         [Route("GetClients")]
         [HttpGet]

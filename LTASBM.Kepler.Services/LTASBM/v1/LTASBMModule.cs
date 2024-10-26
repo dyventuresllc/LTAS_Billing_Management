@@ -15,6 +15,11 @@ namespace LTASBM.Kepler.Services.LTASBM.v1
         {
             _eddsdBContext = eddsdBContext;
         }
+
+        public void Dispose()
+        {
+        }    
+            
         //GOAL:
         //  To return a list of clients that are in the environment but not yet captured in our reporting tool  will be doing the same idiologty for matters and workspaces
         public async Task<List<LTASClient>> GetClients( string dB, string serverName)
