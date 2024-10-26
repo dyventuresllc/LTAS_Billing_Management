@@ -18,7 +18,7 @@ namespace LTASBM.Agent
             using (var servicesManager = Helper.GetServicesManager())
             {
                 string dB = "EDDS1623625"; 
-                string serverName = "esus02512841W05.sql-Y012.relativity.one\\esus02512841W05"; 
+                string serverName = @"esus02512841W05.sql-Y012.relativity.one\esus02512841W05"; 
 
                 var keplerServiceProxy = servicesManager.CreateProxy<ILTASClient>();
                 List<LTASClient> clients = keplerServiceProxy.GetClients(dB, serverName).Result;
