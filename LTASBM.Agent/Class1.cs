@@ -5,6 +5,7 @@ using LTASBM.Kepler.Interfaces.LTASBM.v1;
 using System.Collections.Generic;
 using Relativity.API;
 using System.Data.SqlClient;
+using Relativity.Identity.V1.Services;
 
 namespace LTASBM.Agent
 {
@@ -25,7 +26,7 @@ namespace LTASBM.Agent
             var instanceSettingManager = Helper.GetInstanceSettingBundle();
             IDBContext eddsDbContext;
             eddsDbContext = Helper.GetDBContext(-1);
-
+            IUserManager userManager = servicesManager.CreateProxy<IUserManager>(ExecutionIdentity.System);
             InitializeDatabaseSettings(instanceSettingManager, eddsDbContext);
                       
 
@@ -33,6 +34,7 @@ namespace LTASBM.Agent
             try
             {
                 List<LTASClient> clients = keplerServiceProxy.GetClients(managementDb, serverName).Result;
+                Tasks.Tasks.ClientIncorrectFormat(logger, instanceSettingManager, userManager, clients);
             }
             catch (Exception ex)
             {
