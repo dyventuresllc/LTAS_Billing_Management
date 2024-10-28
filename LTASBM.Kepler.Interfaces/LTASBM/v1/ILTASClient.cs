@@ -5,13 +5,16 @@ using System.Threading.Tasks;
 
 namespace LTASBM.Kepler.Interfaces.LTASBM.v1
 {
-    [ServiceModule("LTASBM Module")]
-    [RoutePrefix("LTASBM", VersioningStrategy.Namespace)]
+    [WebService("LTASClient Service")]
+    [ServiceAudience(Audience.Public)]
+    [RoutePrefix("ltasclients")]
+    
     public interface ILTASClient: IDisposable
     {
-        [Route("GetClients")]
+
         [HttpGet]
-        Task<List<LTASClient>> GetClients(string dB, string serverName);
+        [Route("GetClients")]
+        Task<List<LTASClient>> GetClientsAsync(string dB, string serverName);
     }
 
     public class LTASClient

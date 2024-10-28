@@ -29,11 +29,10 @@ namespace LTASBM.Agent
             IUserManager userManager = servicesManager.CreateProxy<IUserManager>(ExecutionIdentity.System);
             InitializeDatabaseSettings(instanceSettingManager, eddsDbContext);
                       
-
             var keplerServiceProxy = servicesManager.CreateProxy<ILTASClient>(ExecutionIdentity.System);
             try
             {
-                List<LTASClient> clients = keplerServiceProxy.GetClients(managementDb, serverName).Result;
+                List<LTASClient> clients = keplerServiceProxy.GetClientsAsync(managementDb, serverName).Result;
                 Tasks.Tasks.ClientIncorrectFormat(logger, instanceSettingManager, userManager, clients);
             }
             catch (Exception ex)

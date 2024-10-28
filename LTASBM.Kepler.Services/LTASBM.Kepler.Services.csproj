@@ -44,7 +44,8 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="LTASBM\v1\LTASBMModule.cs" />
+    <Compile Include="LTASBM\LTASBMModule.cs" />
+    <Compile Include="LTASBM\v1\LTASClientService.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
