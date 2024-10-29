@@ -11,5 +11,4 @@ namespace LTASBM.Kepler.Interfaces.LTASBM
     public interface ILTASBMSVCModule
     {        
     }
-
 }
