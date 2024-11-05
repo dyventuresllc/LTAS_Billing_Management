@@ -25,7 +25,7 @@ namespace LTASBM.Agent
 
                 IDBContext eddsDbContext,billingDbContext;
                 eddsDbContext = Helper.GetDBContext(-1);
-                var objectManager = Helper.GetServicesManager().CreateProxy<IObjectManager>(Relativity.API.ExecutionIdentity.System);
+                //var objectManager = Helper.GetServicesManager().CreateProxy<IObjectManager>(Relativity.API.ExecutionIdentity.System);
                 logger = Helper.GetLoggerFactory().GetLogger();
                 var servicesManager = Helper.GetServicesManager();
                 var instanceSettingManager = Helper.GetInstanceSettingBundle();
@@ -45,7 +45,7 @@ namespace LTASBM.Agent
                         Helper.GetInstanceSettingBundle(),
                         Helper.GetServicesManager()
                     );
-                    clientRoutines.ProcessClientRoutines(objectManager, billingDatabaseId);
+                    clientRoutines.ProcessClientRoutines(billingDatabaseId);
                     eddsDbContext.ExecuteNonQuerySQLStatement("UPDATE qac SET  qac.[JobLastExecute_DateTime] = GETDATE() FROM EDDS.QE.AutomationControl qac WHERE qac.JobId = 2;");
                 }                                                          
             }

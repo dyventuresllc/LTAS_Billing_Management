@@ -23,7 +23,7 @@ namespace LTASBM.Agent.Routines
             _servicesMgr = servicesMgr;
         }
 
-        public async void ProcessClientRoutines(IObjectManager objectManager, int billingManagementDatabase)
+        public async void ProcessClientRoutines(int billingManagementDatabase)
         {
             try 
             { 
@@ -55,13 +55,16 @@ namespace LTASBM.Agent.Routines
                     Emails.NewClientsToBeCreated(_instanceSettings, emailBody, "damienyoung@quinnemanuel.com");
 
                     foreach (var c in missingInBilling)
-                    {                        
-                        var result = await Tasks.Tasks.CreateNewClient(objectManager, billingManagementDatabase, c.EddsClientNumber, c.EddsClientName, c.EddsClientArtifactId,_logger);
-
-                        if (result == null && result.Object == null)
+                    {                     
+                        using (IObjectManager objectManager =_servicesMgr.CreateProxy<IObjectManager>(ExecutionIdentity.System))                         
                         {
-                            _logger.LogError($"Client - {{ArtifactID - {c.EddsClientArtifactId};Number -{c.EddsClientNumber};Name -{c.EddsClientName} not created in billing database, some error occurred.");
+                            var result = await Tasks.Tasks.CreateNewClient(objectManager, billingManagementDatabase, c.EddsClientNumber, c.EddsClientName, c.EddsClientArtifactId, _logger);
+                            if (result == null && result.Object == null)
+                            {
+                                _logger.LogError($"Client - {{ArtifactID - {c.EddsClientArtifactId};Number - {c.EddsClientNumber};Name - {c.EddsClientName} not created in billing database, some error occurred.");
+                            }
                         }
+                        //var result = await Tasks.Tasks.CreateNewClient(objectManager, billingManagementDatabase, c.EddsClientNumber, c.EddsClientName, c.EddsClientArtifactId,_logger);                        
                     }
                 }
             }
