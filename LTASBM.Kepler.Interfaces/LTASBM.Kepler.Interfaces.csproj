@@ -45,11 +45,7 @@
     <Compile Include="LTASBM\ILTASBMSVCModule.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
-  <ItemGroup />
   <ItemGroup>
-    <PackageReference Include="Relativity.API">
-      <Version>17.0.4</Version>
-    </PackageReference>
     <PackageReference Include="Relativity.Kepler">
       <Version>2.23.1</Version>
     </PackageReference>

@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 
 namespace LTASBM.Kepler.Interfaces.LTASBM.v1
 {
-    [WebService("LTASClient Service")]
+    [WebService("LTASClientService")]
     [ServiceAudience(Audience.Public)]
     [RoutePrefix("ltasclients")]
     
@@ -13,12 +13,13 @@ namespace LTASBM.Kepler.Interfaces.LTASBM.v1
     {
 
         [HttpGet]
-        [Route("GetClients")]
-        Task<List<LTASClient>> GetClientsAsync(string dB, string serverName);
+        [Route("")]
+        Task<List<LTASClient>> GetClientsAsync();
     }
 
     public class LTASClient
     {
+        public int ArtifactID { get; set; } 
         public string Number { get; set; }
         public string Name { get; set; }
         public int CreatedBy { get; set; } 

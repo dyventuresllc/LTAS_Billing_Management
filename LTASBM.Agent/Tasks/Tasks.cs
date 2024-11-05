@@ -1,12 +1,7 @@
-﻿using LTASBM.Agent.Utilities;
-using LTASBM.Kepler.Interfaces.LTASBM.v1;
-using Relativity.API;
-using Relativity.Identity.V1.Services;
-using Relativity.Identity.V1.UserModels;
-using System;
+﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
+using Relativity.API;
 using Relativity.Services.Objects;
 using Relativity.Services.Objects.DataContracts;
 
@@ -14,26 +9,14 @@ namespace LTASBM.Agent.Tasks
 {
     public static class Tasks
     {
-        public static async void ClientIncorrectFormat(IAPILog logger, IInstanceSettingsBundle instanceSettingsBundle, IUserManager userManager, List<LTASClient> lTASClients)
+        
+        public static async Task<CreateResult> CreateNewClient(IObjectManager objectManager, int workspaceArtifactID, string clientNumberValue, string clientNameValue, int clientEddsArtifactIdValue,IAPILog logger )
         {
-            var wrongClientFormat = lTASClients.Where(client => client.Number.Length > 5).ToList();
+            CreateResult result;
 
-            if (wrongClientFormat.Any())
-            {
-                logger.LogInformation($"There are {wrongClientFormat} client's that need to have the client number fixed.");
-                foreach (var client in wrongClientFormat)
-                {
-                    //TODO: loop this into a try and log user info
-                    UserResponse response = await userManager.ReadAsync(client.CreatedBy);
-                    Emails.FixClientEmail(instanceSettingsBundle, response.EmailAddress, response.FirstName);
-                }
-            }
-        }
-
-        static async Task CreateNewClient(IObjectManager objectManager, int workspaceArtifactID, string clientIdValue, string clientNameValue)
-        {
-            Guid clientIdField = new Guid("C3F4236F-B59B-48B5-99C8-3678AA5EEA72");
-            Guid clientNameField = new Guid("C3F4236F-B59B-48B5-99C8-3678AA5EEA72");
+            Guid clientNumberField = new Guid("C3F4236F-B59B-48B5-99C8-3678AA5EEA72");
+            Guid clientNameField = new Guid("E704BF08-C187-4EAB-9A25-51C17AA98FB9");
+            Guid clientEDDSArtifactIDField = new Guid("1A30F07F-1E5C-4177-BB43-257EF7588660");
 
             try
             {
@@ -50,9 +33,9 @@ namespace LTASBM.Agent.Tasks
                        {
                            Field = new FieldRef
                            {
-                            Guid = clientIdField
+                            Guid = clientNumberField
                            },
-                           Value = clientIdValue
+                           Value = clientNumberValue
                        },
                        new FieldRefValuePair
                        {
@@ -61,22 +44,32 @@ namespace LTASBM.Agent.Tasks
                             Guid= clientNameField
                            },
                            Value = clientNameValue
+                       },
+                       new FieldRefValuePair
+                       {
+                           Field = new FieldRef
+                           {
+                            Guid= clientEDDSArtifactIDField
+                           },
+                           Value = clientEddsArtifactIdValue
                        }
                     }
                 };
 
                 using (objectManager)
                 {
-                    var result = await objectManager.CreateAsync(workspaceArtifactID, createRequest);
+                    result = await objectManager.CreateAsync(workspaceArtifactID, createRequest);                                       
                 }
+                return result;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error creating client: {ex.Message}");
-            }
+                logger.LogError($"error creating new client - {ex.Message} --- {ex.StackTrace}", ex);
+                throw;          
+            }           
         }
 
-        static async Task CreateNewMatter(IObjectManager objectManager, int workspaceId, string matterId, string matterName)
+        public static async Task CreateNewMatter(IObjectManager objectManager, int workspaceId, string matterId, string matterName)
         {
             Guid matterIdField = new Guid("3A8B7AC8-0393-4C48-9F58-C60980AE8107");
             Guid matterNameField = new Guid("C375AA14-D5CD-484C-91D5-35B21826AD14");
@@ -88,7 +81,7 @@ namespace LTASBM.Agent.Tasks
                 {
                     var createRequest = new CreateRequest
                     {
-                        ObjectType = new ObjectTypeRef { ArtifactTypeID = 1000116 },
+                        ObjectType = new ObjectTypeRef { Guid = new Guid("18DA4321-AAFB-4B24-99E9-13F90090BF1B") },
                         FieldValues = new List<FieldRefValuePair>
                         {
                             new FieldRefValuePair
@@ -113,6 +106,7 @@ namespace LTASBM.Agent.Tasks
             }
             catch (Exception ex)
             {
+               
                 Console.WriteLine($"Error creating matter: {ex.Message}");
                 Console.WriteLine($"Detail: {ex}");
             }

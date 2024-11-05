@@ -1,11 +1,10 @@
 ﻿using kCura.Agent;
 using System;
 using System.Runtime.InteropServices;
-using LTASBM.Kepler.Interfaces.LTASBM.v1;
-using System.Collections.Generic;
 using Relativity.API;
-using System.Data.SqlClient;
-using Relativity.Identity.V1.Services;
+using LTASBM.Agent.Handlers;
+using LTASBM.Agent.Routines;
+using Relativity.Services.Objects;
 
 namespace LTASBM.Agent
 {
@@ -15,68 +14,63 @@ namespace LTASBM.Agent
     public class LTASBillingWorker : AgentBase
     {
         private IAPILog logger;
-        private string managementDb = null;
-        private string serverName = null;
         public override string Name => "LTAS Billing Managment Worker";
-
+        
         public override void Execute()
         {
-            logger = Helper.GetLoggerFactory().GetLogger();
-            var servicesManager = Helper.GetServicesManager();
-            var instanceSettingManager = Helper.GetInstanceSettingBundle();
-            IDBContext eddsDbContext;
-            eddsDbContext = Helper.GetDBContext(-1);
-            IUserManager userManager = servicesManager.CreateProxy<IUserManager>(ExecutionIdentity.System);
-            InitializeDatabaseSettings(instanceSettingManager, eddsDbContext);
-                      
-            var keplerServiceProxy = servicesManager.CreateProxy<ILTASClient>(ExecutionIdentity.System);
-            try
+            try 
             {
-                List<LTASClient> clients = keplerServiceProxy.GetClientsAsync(managementDb, serverName).Result;
-                Tasks.Tasks.ClientIncorrectFormat(logger, instanceSettingManager, userManager, clients);
+                RaiseMessage("starting...",1);
+                InitializeServices(out DataHandler dataHandler);
+
+                IDBContext eddsDbContext,billingDbContext;
+                eddsDbContext = Helper.GetDBContext(-1);
+                var objectManager = Helper.GetServicesManager().CreateProxy<IObjectManager>(Relativity.API.ExecutionIdentity.System);
+
+                int intervalHours = (int)eddsDbContext.ExecuteSqlStatementAsScalar("SELECT JobExecute_Interval FROM EDDS.QE.AutomationControl WHERE JobId = 2;");
+                DateTime lastExecuteTime = (DateTime)(eddsDbContext.ExecuteSqlStatementAsScalar("SELECT JobLastExecute_DateTime FROM EDDS.QE.AutomationControl WHERE JobId = 2;"));
+
+                if (DateTime.Now >= lastExecuteTime.AddHours(intervalHours))
+                {
+                    logger = Helper.GetLoggerFactory().GetLogger();
+                    var servicesManager = Helper.GetServicesManager();
+                    var instanceSettingManager = Helper.GetInstanceSettingBundle();
+                    var billingDatabaseId = instanceSettingManager.GetInt("LTAS Billing Management", "Management Database").Value;
+                   
+                    billingDbContext = Helper.GetDBContext(billingDatabaseId);
+                    var clientRoutines = new ClientRoutine(
+                        logger,
+                        dataHandler,
+                        Helper.GetInstanceSettingBundle(),
+                        Helper.GetServicesManager()
+                    );
+                    clientRoutines.ProcessClientRoutines(objectManager, billingDatabaseId);
+                    eddsDbContext.ExecuteNonQuerySQLStatement("UPDATE qac SET  qac.[JobLastExecute_DateTime] = GETDATE() FROM EDDS.QE.AutomationControl qac WHERE qac.JobId = 2;");
+                }                                                          
             }
             catch (Exception ex)
             {
-                Exception(ex, "Failure obtaining LTAS client list.");
+                Exception(ex, $"Agent failure:\n");               
             }                  
         }
 
+        private void InitializeServices(out DataHandler dataHandler)
+        {
+            logger = Helper.GetLoggerFactory().GetLogger();
+            var instanceSettingManager = Helper.GetInstanceSettingBundle();
+            var eddsDbContext = Helper.GetDBContext(-1);
+            int billingDatabaseId = instanceSettingManager.GetInt("LTAS Billing Management", "Management Database").Value;
+            var billingDbContext = Helper.GetDBContext(billingDatabaseId);
+
+
+            dataHandler = new DataHandler(eddsDbContext, billingDbContext);
+        }
         public void Exception(Exception ex, string errorMessage)
         {
             errorMessage += ex.InnerException != null ? string.Concat("---", ex.InnerException) : string.Concat("---", ex.Message);
             logger.LogError(errorMessage);
             RaiseError(errorMessage, ex.ToString());
             return;
-        }
-
-        public void InitializeDatabaseSettings(IInstanceSettingsBundle instanceSettingManager, IDBContext eddsDbContext)
-        {
-            logger.LogInformation("Starting to retrieve management database variables...");
-            try
-            {
-                managementDb = "EDDS" + Convert.ToInt32(instanceSettingManager.GetUInt("LTAS Billing Management", "Management Database"));
-            }
-            catch (Exception ex)
-            {
-                Exception(ex, "Failure obtaining Management Database instance setting.");
-            }
-
-            try
-            {
-                string sql = "SELECT DbLocation FROM EDDS.eddsdbo.ExtendedCase WHERE ArtifactID @WorkspaceArtifactId";
-                SqlParameter workspaceArtifactIdParam = new SqlParameter("@WorkspaceArtifactId", System.Data.SqlDbType.Int);
-
-                serverName = (eddsDbContext.ExecuteSqlStatementAsScalar<string>(sql, workspaceArtifactIdParam));
-            }
-            catch (Exception ex)
-            {
-                Exception(ex, "Failure obtaining Management Database server location.");
-            }
-
-            if (managementDb != null && serverName != null)
-            {
-                logger.LogInformation("ManagementDb '{managementDb}' and Server '{serverName}' identified successfully", managementDb, serverName);
-            }
-        }
+        }       
     }
 }

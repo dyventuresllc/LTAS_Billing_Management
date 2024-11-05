@@ -31,9 +31,6 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Relativity.API, Version=17.0.4.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\Relativity.API.17.0.4\lib\net462\Relativity.API.dll</HintPath>
-    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
@@ -55,7 +52,12 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <None Include="packages.config" />
+    <PackageReference Include="Relativity.API">
+      <Version>17.0.4</Version>
+    </PackageReference>
+    <PackageReference Include="Relativity.Kepler">
+      <Version>2.23.1</Version>
+    </PackageReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

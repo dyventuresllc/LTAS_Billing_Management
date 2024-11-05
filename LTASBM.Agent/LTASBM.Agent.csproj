@@ -31,30 +31,6 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="kCura.Agent, Version=17.0.4.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\Relativity.Agent.17.0.4\lib\net462\kCura.Agent.dll</HintPath>
-    </Reference>
-    <Reference Include="Relativity.API, Version=17.0.4.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\Relativity.API.17.0.4\lib\net462\Relativity.API.dll</HintPath>
-    </Reference>
-    <Reference Include="Relativity.Identity, Version=2.6.2.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\Relativity.Identity.SDK.2.6.2\lib\net462\Relativity.Identity.dll</HintPath>
-    </Reference>
-    <Reference Include="Relativity.Kepler, Version=2.9.2.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\Relativity.ObjectManager.12.1.171.20\lib\net462\Relativity.Kepler.dll</HintPath>
-    </Reference>
-    <Reference Include="Relativity.Services.DataContracts, Version=13.2.3.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\Relativity.ObjectManager.12.1.171.20\lib\net462\Relativity.Services.DataContracts.dll</HintPath>
-    </Reference>
-    <Reference Include="Relativity.Services.Interfaces, Version=13.2.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\Relativity.ObjectManager.12.1.171.20\lib\net462\Relativity.Services.Interfaces.dll</HintPath>
-    </Reference>
-    <Reference Include="Relativity.Services.ServiceProxy, Version=2.9.2.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\Relativity.ObjectManager.12.1.171.20\lib\net462\Relativity.Services.ServiceProxy.dll</HintPath>
-    </Reference>
-    <Reference Include="Relativity.Shared, Version=1.8.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\Relativity.Shared.SDK.1.8.0\lib\net462\Relativity.Shared.dll</HintPath>
-    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
@@ -66,22 +42,22 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Class1.cs" />
+    <Compile Include="Models\Clients.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Routines\ClientRoutine.cs" />
     <Compile Include="Tasks\Tasks.cs" />
     <Compile Include="Utilities\Emails.cs" />
+    <Compile Include="Handlers\DataHandler.cs" />
+    <Compile Include="Utilities\EmailsHtml.cs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\LTASBM.Kepler.Interfaces\LTASBM.Kepler.Interfaces.csproj">
-      <Project>{d99e1f97-0d47-4b1d-a918-9d3208bc6b06}</Project>
-      <Name>LTASBM.Kepler.Interfaces</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\LTASBM.Kepler.Services\LTASBM.Kepler.Services.csproj">
-      <Project>{a7d12ed0-b5de-449f-92ed-bf9b59d64bbe}</Project>
-      <Name>LTASBM.Kepler.Services</Name>
-    </ProjectReference>
+    <PackageReference Include="Relativity.Agent">
+      <Version>17.0.4</Version>
+    </PackageReference>
+    <PackageReference Include="Relativity.ObjectManager">
+      <Version>12.1.171.20</Version>
+    </PackageReference>
   </ItemGroup>
-  <ItemGroup>
-    <None Include="packages.config" />
-  </ItemGroup>
+  <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

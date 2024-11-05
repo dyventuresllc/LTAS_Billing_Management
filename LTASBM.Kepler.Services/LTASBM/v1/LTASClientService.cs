@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Runtime.Remoting.Messaging;
 using System.Threading.Tasks;
 using LTASBM.Kepler.Interfaces.LTASBM.v1;
 using Relativity.API;
@@ -24,21 +25,25 @@ namespace LTASBM.Kepler.Services.LTASBM.v1
 
         //GOAL:
         //  To return a list of clients that are in the environment but not yet captured in our reporting tool  will be doing the same idiologty for matters and workspaces
-        public async Task<List<LTASClient>> GetClientsAsync(string dB, string serverName)
-        {            
+        public async Task<List<LTASClient>> GetClientsAsync()
+        {
+
+
             var clients = new List<LTASClient>();
             string sql;
 
-            sql = @"SELECT DISTINCT
-                        ec.ClientNumber, ec.ClientName, ec.CreatedBy
-                    FROM 
-                    EDDS.Eddsdbo.ExtendedCase ec
-                    WHERE ec.ClientNumber NOT IN 
-                    (   SELECT 
-                            DISTINCT ClientNumber
-                        FROM OPENQUERY([" + serverName + @"], 
-                        'SELECT c.ClientNumber, c.ClientName FROM [" + dB + @"].eddsdbo.client c WITH (NOLOCK)') 
-                    )";
+            //sql = @"SELECT DISTINCT
+            //            ec.ClientNumber, ec.ClientName, ec.CreatedBy
+            //        FROM 
+            //        EDDS.Eddsdbo.ExtendedCase ec
+            //        WHERE ec.ClientNumber NOT IN 
+            //        (   SELECT 
+            //                DISTINCT ClientNumber
+            //            FROM OPENQUERY([" + serverName + @"], 
+            //            'SELECT c.ClientNumber, c.ClientName FROM [" + dB + @"].eddsdbo.client c WITH (NOLOCK)') 
+            //        )";
+
+            sql = @"SELECT * FROM EDDS.eddsdbo.client WITH (NOLOCK)";
             try
             {
                 DataTable dt = _eddsdBContext.ExecuteSqlStatementAsDataTable(sql);
@@ -46,19 +51,24 @@ namespace LTASBM.Kepler.Services.LTASBM.v1
                 {
                     var client = new LTASClient
                     {
+                        ArtifactID = row.Field<int>("ArtifactID"),
                         Number = row["ClientNumber"].ToString(),
                         Name = row["ClientName"].ToString(),
-                        CreatedBy = Convert.ToInt32(row["CreatedBy"])
+                        CreatedBy = row.Field<int>("CreatedBy")
                     };
                     clients.Add(client);
                 }
-                return await Task.Run((() => clients)).ConfigureAwait(false);
+                return await Task.Run((() =>
+                {
+                    return clients;
+
+                })).ConfigureAwait(false);
             }
-            catch (Exception ex) 
-            {                
-                _logger.LogError(ex.InnerException != null ? string.Concat("---", ex.InnerException) : string.Concat("---", ex.Message));
+            catch (Exception ex)
+            {
+                //_logger.LogError(ex.InnerException != null ? string.Concat("---", ex.InnerException) : string.Concat("---", ex.Message));
                 throw;
-            }          
+            }
         }       
     }
 }
