@@ -1,9 +1,7 @@
-﻿using kCura.Vendor.Castle.Core.Logging;
-using LTASBM.Agent.Handlers;
+﻿using LTASBM.Agent.Handlers;
 using LTASBM.Agent.Utilities;
 using Relativity.API;
 using Relativity.Services.Objects;
-using Relativity.Services.Objects.DataContracts;
 using System;
 using System.Linq;
 using System.Text;
@@ -46,7 +44,8 @@ namespace LTASBM.Agent.Routines
 
                 var missingInBilling = eddsClients
                     .Where(edds => !billingClients
-                    .Any(billing => billing.BillingEddsClientArtifactId == edds.EddsClientArtifactId))
+                    .Any(billing => billing.BillingEddsClientArtifactId == edds.EddsClientArtifactId)
+                    && edds.EddsClientNumber.Length == 5)                    
                     .ToList();
 
                 if (missingInBilling.Any())
@@ -66,9 +65,10 @@ namespace LTASBM.Agent.Routines
                     }
                 }
             }
-            catch (Exception)
-            {
-                throw;         
+            catch (Exception ex)
+            {                
+                string errorMessage = ex.InnerException != null ? string.Concat("---", ex.InnerException) : string.Concat("---", ex.Message);
+                _logger.LogError(errorMessage);                
             }
         }
     }

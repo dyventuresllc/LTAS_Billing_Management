@@ -26,19 +26,19 @@ namespace LTASBM.Agent
                 IDBContext eddsDbContext,billingDbContext;
                 eddsDbContext = Helper.GetDBContext(-1);
                 var objectManager = Helper.GetServicesManager().CreateProxy<IObjectManager>(Relativity.API.ExecutionIdentity.System);
-                
+                logger = Helper.GetLoggerFactory().GetLogger();
+                var servicesManager = Helper.GetServicesManager();
+                var instanceSettingManager = Helper.GetInstanceSettingBundle();
+                var billingDatabaseId = instanceSettingManager.GetInt("LTAS Billing Management", "Management Database").Value;
+                billingDbContext = Helper.GetDBContext(billingDatabaseId);
+                var dataHandler = new DataHandler(eddsDbContext, billingDbContext);
+
+                //LTAS Billing Hourly Jobs 
                 int intervalHours = (int)eddsDbContext.ExecuteSqlStatementAsScalar("SELECT JobExecute_Interval FROM EDDS.QE.AutomationControl WHERE JobId = 2;");
                 DateTime lastExecuteTime = (DateTime)(eddsDbContext.ExecuteSqlStatementAsScalar("SELECT JobLastExecute_DateTime FROM EDDS.QE.AutomationControl WHERE JobId = 2;"));
 
                 if (DateTime.Now >= lastExecuteTime.AddHours(intervalHours))
                 {
-                    logger = Helper.GetLoggerFactory().GetLogger();
-                    var servicesManager = Helper.GetServicesManager();
-                    var instanceSettingManager = Helper.GetInstanceSettingBundle();
-                    var billingDatabaseId = instanceSettingManager.GetInt("LTAS Billing Management", "Management Database").Value;                                      
-                    billingDbContext = Helper.GetDBContext(billingDatabaseId);
-                    var dataHandler = new DataHandler(eddsDbContext, billingDbContext);
-
                     var clientRoutines = new ClientRoutine(
                         logger,
                         dataHandler,
