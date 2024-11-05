@@ -77,9 +77,13 @@ namespace LTASBM.Agent.Utilities
                 Body = htmlBody.ToString(),
                 IsBodyHtml = true
             };
-            emailMessage.To.Add(emailAddress);
-            emailMessage.CC.Add("ltasrelativity@quinnemanuel.com");
-            emailMessage.ReplyToList.Add(new MailAddress("dmaienyoung@quinnemanuel.com", "Damien Young"));
+
+            emailMessage.To.Add(emailAddress.Contains("relativity.serviceaccount@kcura.com")
+            ? "damienyoung@quinnemanuel.com"
+            : emailAddress);
+            
+            emailMessage.CC.Add("damienyoung@quinnemanuel.com");
+            emailMessage.ReplyToList.Add(new MailAddress("damienyoung@quinnemanuel.com", "Damien Young"));
 
             using (var smtpClient = new SmtpClient())
             {
@@ -123,7 +127,7 @@ namespace LTASBM.Agent.Utilities
                 IsBodyHtml = true
             };
             emailMessage.To.Add(emailAddress);            
-            emailMessage.ReplyToList.Add(new MailAddress("dmaienyoung@quinnemanuel.com", "Damien Young"));
+            emailMessage.ReplyToList.Add(new MailAddress("damienyoung@quinnemanuel.com", "Damien Young"));
 
             using (var smtpClient = new SmtpClient())
             {
@@ -137,7 +141,6 @@ namespace LTASBM.Agent.Utilities
                 smtpClient.Send(emailMessage);
             }
         }
-
         public static void testemail(IInstanceSettingsBundle instanceSettingsBundle, StringBuilder htmlBody)
         {
             SMTPSetting smtpPassword = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPassword" };

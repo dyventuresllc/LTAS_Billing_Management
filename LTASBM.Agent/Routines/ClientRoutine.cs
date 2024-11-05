@@ -61,16 +61,17 @@ namespace LTASBM.Agent.Routines
                             var result = await Tasks.Tasks.CreateNewClient(objectManager, billingManagementDatabase, c.EddsClientNumber, c.EddsClientName, c.EddsClientArtifactId, _logger);
                             if (result == null && result.Object == null)
                             {
+                                StringBuilder sb = new StringBuilder();
                                 _logger.LogError($"Client - {{ArtifactID - {c.EddsClientArtifactId};Number - {c.EddsClientNumber};Name - {c.EddsClientName} not created in billing database, some error occurred.");
+                                Emails.testemail(_instanceSettings, sb);
                             }
                             else 
                             {
                                 StringBuilder sb = new StringBuilder();
-                                sb.Append($"Client - {{ArtifactID - {c.EddsClientArtifactId};Number - {c.EddsClientNumber};Name - {c.EddsClientName} not created in billing database, some error occurred. new object artifactid -{result.Object.ArtifactID}");
+                                sb.Append($"Client - {{ArtifactID - {c.EddsClientArtifactId};Number - {c.EddsClientNumber};Name - {c.EddsClientName} created in billing database, New object artifactid -{result.Object.ArtifactID}");
                                 Emails.testemail(_instanceSettings, sb);
                             }
-                        }
-                        //var result = await Tasks.Tasks.CreateNewClient(objectManager, billingManagementDatabase, c.EddsClientNumber, c.EddsClientName, c.EddsClientArtifactId,_logger);                        
+                        }                                              
                     }
                 }
             }
