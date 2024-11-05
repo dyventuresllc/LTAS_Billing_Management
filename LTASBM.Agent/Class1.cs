@@ -20,13 +20,13 @@ namespace LTASBM.Agent
         {
             try 
             {
-                RaiseMessage("starting...",1);
-                InitializeServices(out DataHandler dataHandler);
+                RaiseMessage("starting...",10);
+                //InitializeServices(out DataHandler dataHandler);
 
                 IDBContext eddsDbContext,billingDbContext;
                 eddsDbContext = Helper.GetDBContext(-1);
                 var objectManager = Helper.GetServicesManager().CreateProxy<IObjectManager>(Relativity.API.ExecutionIdentity.System);
-
+                
                 int intervalHours = (int)eddsDbContext.ExecuteSqlStatementAsScalar("SELECT JobExecute_Interval FROM EDDS.QE.AutomationControl WHERE JobId = 2;");
                 DateTime lastExecuteTime = (DateTime)(eddsDbContext.ExecuteSqlStatementAsScalar("SELECT JobLastExecute_DateTime FROM EDDS.QE.AutomationControl WHERE JobId = 2;"));
 
@@ -35,9 +35,10 @@ namespace LTASBM.Agent
                     logger = Helper.GetLoggerFactory().GetLogger();
                     var servicesManager = Helper.GetServicesManager();
                     var instanceSettingManager = Helper.GetInstanceSettingBundle();
-                    var billingDatabaseId = instanceSettingManager.GetInt("LTAS Billing Management", "Management Database").Value;
-                   
+                    var billingDatabaseId = instanceSettingManager.GetInt("LTAS Billing Management", "Management Database").Value;                                      
                     billingDbContext = Helper.GetDBContext(billingDatabaseId);
+                    var dataHandler = new DataHandler(eddsDbContext, billingDbContext);
+
                     var clientRoutines = new ClientRoutine(
                         logger,
                         dataHandler,
