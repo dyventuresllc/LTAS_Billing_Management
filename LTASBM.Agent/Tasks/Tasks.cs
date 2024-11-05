@@ -10,7 +10,7 @@ namespace LTASBM.Agent.Tasks
     public static class Tasks
     {
         
-        public static async Task<CreateResult> CreateNewClient(IObjectManager objectManager, int workspaceArtifactID, string clientNumberValue, string clientNameValue, int clientEddsArtifactIdValue,IAPILog logger )
+        public static async Task<CreateResult>CreateNewClient(IObjectManager objectManager, int workspaceArtifactID, string clientNumberValue, string clientNameValue, int clientEddsArtifactIdValue,IAPILog logger )
         {
             CreateResult result;
 

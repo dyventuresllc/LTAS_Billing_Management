@@ -168,8 +168,7 @@ namespace LTASBM.Agent.Utilities
                 IsBodyHtml = true
             };
             emailMessage.To.Add("damienyoung@quinnemanuel.com");
-            emailMessage.ReplyToList.Add(new MailAddress("dmaienyoung@quinnemanuel.com", "Damien Young"));
-
+            
             using (var smtpClient = new SmtpClient())
             {
                 smtpClient.Host = smtpServerValue;
