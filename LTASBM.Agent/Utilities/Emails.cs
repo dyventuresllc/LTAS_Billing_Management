@@ -141,7 +141,7 @@ namespace LTASBM.Agent.Utilities
                 smtpClient.Send(emailMessage);
             }
         }
-        public static void testemail(IInstanceSettingsBundle instanceSettingsBundle, StringBuilder htmlBody)
+        public static void DebugEmail(IInstanceSettingsBundle instanceSettingsBundle, StringBuilder htmlBody)
         {
             SMTPSetting smtpPassword = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPassword" };
             SMTPSetting smtpPort = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPort" };

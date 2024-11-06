@@ -5,21 +5,29 @@ using Relativity.API;
 using Relativity.Services.Objects;
 using Relativity.Services.Objects.DataContracts;
 
-namespace LTASBM.Agent.Tasks
+namespace LTASBM.Agent.Handlers
 {
-    public static class Tasks
-    {
-        
-        public static async Task<CreateResult>CreateNewClient(IObjectManager objectManager, int workspaceArtifactID, string clientNumberValue, string clientNameValue, int clientEddsArtifactIdValue,IAPILog logger )
-        {
-            CreateResult result;
+    public class ObjectHandler
+    {    
+        private readonly IServicesMgr ServicesMgr;
+        private readonly IAPILog Logger;
 
+        public ObjectHandler(IServicesMgr servicesMgr, IAPILog logger)
+        {
+            ServicesMgr = servicesMgr;
+            Logger = logger;
+        }
+
+        public async Task<CreateResult>CreateNewClient(int workspaceArtifactID, string clientNumberValue, string clientNameValue, int clientEddsArtifactIdValue)
+        {            
             Guid clientNumberField = new Guid("C3F4236F-B59B-48B5-99C8-3678AA5EEA72");
             Guid clientNameField = new Guid("E704BF08-C187-4EAB-9A25-51C17AA98FB9");
             Guid clientEDDSArtifactIDField = new Guid("1A30F07F-1E5C-4177-BB43-257EF7588660");
 
             try
             {
+                IObjectManager objectManager  = ServicesMgr.CreateProxy<IObjectManager>(ExecutionIdentity.System);
+
                 var createRequest = new CreateRequest
                 {
                     ObjectType = new ObjectTypeRef
@@ -29,42 +37,39 @@ namespace LTASBM.Agent.Tasks
                     ,
                     FieldValues = new List<FieldRefValuePair>
                     {
-                       new FieldRefValuePair
-                       {
-                           Field = new FieldRef
-                           {
+                        new FieldRefValuePair
+                        {
+                            Field = new FieldRef
+                            {
                             Guid = clientNumberField
-                           },
-                           Value = clientNumberValue
-                       },
-                       new FieldRefValuePair
-                       {
-                           Field = new FieldRef
-                           {
+                            },
+                            Value = clientNumberValue
+                        },
+                        new FieldRefValuePair
+                        {
+                            Field = new FieldRef
+                            {
                             Guid= clientNameField
-                           },
-                           Value = clientNameValue
-                       },
-                       new FieldRefValuePair
-                       {
-                           Field = new FieldRef
-                           {
+                            },
+                            Value = clientNameValue
+                        },
+                        new FieldRefValuePair
+                        {
+                            Field = new FieldRef
+                            {
                             Guid= clientEDDSArtifactIDField
-                           },
-                           Value = clientEddsArtifactIdValue
-                       }
+                            },
+                            Value = clientEddsArtifactIdValue
+                        }
                     }
                 };
 
-                using (objectManager)
-                {
-                    result = await objectManager.CreateAsync(workspaceArtifactID, createRequest);                                       
-                }
-                return result;
+                return await objectManager.CreateAsync(workspaceArtifactID, createRequest); 
             }
             catch (Exception ex)
             {
-                logger.LogError($"error creating new client - {ex.Message} --- {ex.StackTrace}", ex);
+                string errorMessage = ex.InnerException != null ? String.Concat(ex.InnerException.Message, "---", ex.StackTrace) : String.Concat(ex.Message, "---", ex.StackTrace);
+                Logger.ForContext<ObjectHandler>().LogError($"{errorMessage}");
                 throw;          
             }           
         }

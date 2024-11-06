@@ -7,11 +7,12 @@ namespace LTASBM.Agent.Handlers
 {
     public class DataHandler
     {
-        readonly IDBContext _eddsDbContext,_billingDbContext;
+        private readonly IDBContext EeddsDbContext,BillingDbContext;
+
         public DataHandler(IDBContext eddsDbContext, IDBContext billingDbContext)
         {
-            _eddsDbContext = eddsDbContext;
-            _billingDbContext = billingDbContext;
+            EeddsDbContext = eddsDbContext;
+            BillingDbContext = billingDbContext;
         }
             
         public List<EddsClients> EDDSClients()
@@ -23,7 +24,7 @@ namespace LTASBM.Agent.Handlers
                            JOIN EDDS.eddsdbo.[User] u WITH (NOLOCK)
                                 ON u.ArtifactID = ec.CreatedBy
                            WHERE  ec.[Number] NOT IN ('Relativity','Relativity Template','Vendor','Review Vendor','Co-Counsel','Software','QE Template','QE')";
-            var dt = _eddsDbContext.ExecuteSqlStatementAsDataTable(sql);
+            var dt = EeddsDbContext.ExecuteSqlStatementAsDataTable(sql);
 
             foreach(DataRow row in dt.Rows) 
             {
@@ -43,7 +44,7 @@ namespace LTASBM.Agent.Handlers
         { 
             var clients = new List<BillingClients>();
             string sql = @"SELECT EDDSClientArtifactID, ClientNumber, ClientName FROM eddsdbo.Client WITH (NOLOCK)";
-            var dt = _billingDbContext.ExecuteSqlStatementAsDataTable(sql);
+            var dt = BillingDbContext.ExecuteSqlStatementAsDataTable(sql);
 
             foreach (DataRow row in dt.Rows)
             {

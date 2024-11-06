@@ -41,16 +41,20 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Class1.cs" />
+    <Compile Include="LTASBillingAgent.cs" />
+    <Compile Include="Handlers\MessageHandler.cs" />
     <Compile Include="Models\Clients.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Routines\ClientRoutine.cs" />
-    <Compile Include="Tasks\Tasks.cs" />
+    <Compile Include="Handlers\ObjectHandler.cs" />
     <Compile Include="Utilities\Emails.cs" />
     <Compile Include="Handlers\DataHandler.cs" />
     <Compile Include="Utilities\EmailsHtml.cs" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json">
+      <Version>13.0.3</Version>
+    </PackageReference>
     <PackageReference Include="Relativity.Agent">
       <Version>17.0.4</Version>
     </PackageReference>

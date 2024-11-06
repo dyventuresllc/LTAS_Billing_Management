@@ -1,7 +1,7 @@
 ﻿using LTASBM.Agent.Handlers;
 using LTASBM.Agent.Utilities;
 using Relativity.API;
-using Relativity.Services.Objects;
+using Relativity.Services.Objects.DataContracts;
 using System;
 using System.Linq;
 using System.Text;
@@ -10,75 +10,109 @@ namespace LTASBM.Agent.Routines
 {
     public class ClientRoutine
     {
-        private readonly IAPILog _logger;
-        private readonly DataHandler _dataHandler;
-        private readonly IInstanceSettingsBundle _instanceSettings;
-        private readonly IServicesMgr _servicesMgr;
-
-        public ClientRoutine(IAPILog logger, DataHandler dataHandler, IInstanceSettingsBundle instanceSettings, IServicesMgr servicesMgr)
+        public async void ProcessClientRoutines(int billingManagementDatabase, IServicesMgr servicesMgr, DataHandler dataHandler, IInstanceSettingsBundle instanceSettings, IAPILog logger)
         {
-            _logger = logger;
-            _dataHandler = dataHandler;
-            _instanceSettings = instanceSettings;
-            _servicesMgr = servicesMgr;
-        }
+            StringBuilder emailBody = new StringBuilder();
+            ObjectHandler objectHandler = new ObjectHandler(servicesMgr, logger);
 
-        public async void ProcessClientRoutines(int billingManagementDatabase)
-        {
-            try 
-            { 
-                var eddsClients = _dataHandler.EDDSClients();
-                var billingClients = _dataHandler.BillingClients();
-
+            try
+            {
+                var eddsClients = dataHandler.EDDSClients();
+                var billingClients = dataHandler.BillingClients();
+               
+                //Handle invalid clients -- client number should be 5 digits only ever
                 var invalidClients = eddsClients.Where(c => c.EddsClientNumber.Length != 5).ToList();
-
-                if(invalidClients.Any()) 
+                
+                if (invalidClients.Any())
                 {
-                    foreach (var c in invalidClients) 
+                    foreach (var record in invalidClients)
                     {
-                        StringBuilder emailBody = new StringBuilder();
-                        emailBody = EmailsHtml.InvalidClientEmailBody(emailBody, c);
-                        Emails.InvalidClientNumber(_instanceSettings, emailBody, c.EddsClientCreatedByEmail);
-                    }                                  
+                        emailBody.Clear();
+                        emailBody = MessageHandler.InvalidClientEmailBody(emailBody, record);
+                        MessageHandler.Email.SentInvalidClientNumber(instanceSettings, emailBody, record.EddsClientCreatedByEmail);
+                    }
                 }
 
+                //Handle new clients that need to be added to billing system
                 var missingInBilling = eddsClients
                     .Where(edds => !billingClients
                     .Any(billing => billing.BillingEddsClientArtifactId == edds.EddsClientArtifactId)
-                    && edds.EddsClientNumber.Length == 5)                    
+                    && edds.EddsClientNumber.Length == 5)
                     .ToList();
 
                 if (missingInBilling.Any())
                 {
-                    StringBuilder emailBody = new StringBuilder();
-                    emailBody = EmailsHtml.NewClientsToBeCreated(emailBody, missingInBilling);
-                    Emails.NewClientsToBeCreated(_instanceSettings, emailBody, "damienyoung@quinnemanuel.com");
-
-                    foreach (var c in missingInBilling)
-                    {                     
-                        using (IObjectManager objectManager =_servicesMgr.CreateProxy<IObjectManager>(ExecutionIdentity.System))                         
+                    emailBody.Clear();
+                    emailBody = MessageHandler.NewClientsEmailBody(emailBody, missingInBilling);
+                    MessageHandler.Email.SendNewClientsReporting(instanceSettings, emailBody, "damienyoung@quinnemanuel.com");
+                    
+                    foreach (var record in missingInBilling)
+                    { 
+                        CreateResult result = await objectHandler.CreateNewClient(billingManagementDatabase, record.EddsClientNumber, record.EddsClientName, record.EddsClientArtifactId);
+                        if (result != null && result.Object != null)
                         {
-                            var result = await Tasks.Tasks.CreateNewClient(objectManager, billingManagementDatabase, c.EddsClientNumber, c.EddsClientName, c.EddsClientArtifactId, _logger);
-                            if (result == null && result.Object == null)
+                            emailBody.Clear();
+
+                            emailBody.Append($"Task result: Artifact ID: {result.Object?.ArtifactID}, " +
+                                             $"Success: {result != null}, " +
+                                             $"Object Created: {result.Object != null}");
+
+                            emailBody.AppendLine($"Client - {{ArtifactID - {record.EddsClientArtifactId};Number - {record.EddsClientNumber};Name - {record.EddsClientName} created in billing database, New object artifactid -{result.Object.ArtifactID}");
+                            Emails.DebugEmail(instanceSettings, emailBody);
+                        }
+                        else if (result != null && result.Object == null)
+                        {
+                            // CreateResult is not null, but the Object property is null
+                            // Log an error and send a debug email indicating the issue
+                            emailBody.Clear();
+                            emailBody.Append($"{{CreateResult object: {Newtonsoft.Json.JsonConvert.SerializeObject(result)} --- line 74");
+                            logger.ForContext<ObjectHandler>().LogError($"CreateResult object: {Newtonsoft.Json.JsonConvert.SerializeObject(result)}");
+
+                            var eventHandlerStatuses = result.EventHandlerStatuses;
+                            if (eventHandlerStatuses != null)
                             {
-                                StringBuilder sb = new StringBuilder();
-                                _logger.LogError($"Client - {{ArtifactID - {c.EddsClientArtifactId};Number - {c.EddsClientNumber};Name - {c.EddsClientName} not created in billing database, some error occurred.");
-                                Emails.testemail(_instanceSettings, sb);
+                                foreach (var status in eventHandlerStatuses)
+                                {
+                                    if (status.Message != null)
+                                    {
+                                        logger.ForContext<ObjectHandler>().LogError($"EventHandlerStatus Message: {status.Message}");
+                                        emailBody.Append($"status - {status.Message}");
+                                    }
+                                }
                             }
-                            else 
+
+                            Emails.DebugEmail(instanceSettings, emailBody);
+
+                        }
+                        else if (result == null)
+                        {
+                            // CreateResult is null, indicating an error occurred
+                            // Log an error and send a debug email indicating the failure
+                            emailBody.Clear();
+                            var eventHandlerStatuses = result.EventHandlerStatuses;
+                            if (eventHandlerStatuses != null)
                             {
-                                StringBuilder sb = new StringBuilder();
-                                sb.Append($"Client - {{ArtifactID - {c.EddsClientArtifactId};Number - {c.EddsClientNumber};Name - {c.EddsClientName} created in billing database, New object artifactid -{result.Object.ArtifactID}");
-                                Emails.testemail(_instanceSettings, sb);
+                                foreach (var status in eventHandlerStatuses)
+                                {
+                                    if (status.Message != null)
+                                    {
+                                        logger.ForContext<ObjectHandler>().LogError($"EventHandlerStatus Message: {status.Message}");
+                                        emailBody.Append($"status - {status.Message}");
+                                    }
+                                }
                             }
-                        }                                              
+
+                            Emails.DebugEmail(instanceSettings, emailBody);
+
+                        }
                     }
                 }
             }
             catch (Exception ex)
-            {                
-                string errorMessage = ex.InnerException != null ? string.Concat("---", ex.InnerException) : string.Concat("---", ex.Message);
-                _logger.LogError(errorMessage);                
+            {
+                string errorMessage = ex.InnerException != null ? string.Concat("---", ex.InnerException, "---", ex.StackTrace) : string.Concat("---", ex.Message, "---", ex.StackTrace);
+                logger.ForContext(typeof(ClientRoutine))
+                      .LogError($"Error Client Rountine: {errorMessage}");
             }
         }
     }
