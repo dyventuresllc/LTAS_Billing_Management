@@ -64,10 +64,8 @@ namespace LTASBM.Agent.Routines
                         }
                         else if (result != null && result.Object == null)
                         {
-                            // CreateResult is not null, but the Object property is null
-                            // Log an error and send a debug email indicating the issue
                             emailBody.Clear();
-                            emailBody.Append($"{{CreateResult object: {Newtonsoft.Json.JsonConvert.SerializeObject(result)} --- line 74");
+                            emailBody.Append($"{{CreateResult object: {Newtonsoft.Json.JsonConvert.SerializeObject(result)}");
                             logger.ForContext<ObjectHandler>().LogError($"CreateResult object: {Newtonsoft.Json.JsonConvert.SerializeObject(result)}");
 
                             var eventHandlerStatuses = result.EventHandlerStatuses;
@@ -77,19 +75,15 @@ namespace LTASBM.Agent.Routines
                                 {
                                     if (status.Message != null)
                                     {
-                                        logger.ForContext<ObjectHandler>().LogError($"EventHandlerStatus Message: {status.Message}");
+                                        logger.ForContext<ObjectHandler>().LogError($"EventHandlerStatus Message: {status.Message} - result.object null");
                                         emailBody.Append($"status - {status.Message}");
                                     }
                                 }
                             }
-
                             Emails.DebugEmail(instanceSettings, emailBody);
-
                         }
                         else if (result == null)
                         {
-                            // CreateResult is null, indicating an error occurred
-                            // Log an error and send a debug email indicating the failure
                             emailBody.Clear();
                             var eventHandlerStatuses = result.EventHandlerStatuses;
                             if (eventHandlerStatuses != null)
@@ -98,14 +92,12 @@ namespace LTASBM.Agent.Routines
                                 {
                                     if (status.Message != null)
                                     {
-                                        logger.ForContext<ObjectHandler>().LogError($"EventHandlerStatus Message: {status.Message}");
+                                        logger.ForContext<ObjectHandler>().LogError($"EventHandlerStatus Message: {status.Message} - result null");
                                         emailBody.Append($"status - {status.Message}");
                                     }
                                 }
                             }
-
                             Emails.DebugEmail(instanceSettings, emailBody);
-
                         }
                     }
                 }
