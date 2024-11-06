@@ -52,15 +52,15 @@ namespace LTASBM.Agent.Handlers
                             Guid= clientNameField
                             },
                             Value = clientNameValue
-                        }//,
-                        //new FieldRefValuePair
-                        //{
-                        //    Field = new FieldRef
-                        //    {
-                        //    Guid= clientEDDSArtifactIDField
-                        //    },
-                        //    Value = clientEddsArtifactIdValue
-                        //}
+                        },
+                        new FieldRefValuePair
+                        {
+                            Field = new FieldRef
+                            {
+                            Guid= clientEDDSArtifactIDField
+                            },
+                            Value = clientEddsArtifactIdValue
+                        }
                     }
                 };
 
