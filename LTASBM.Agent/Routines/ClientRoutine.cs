@@ -1,5 +1,4 @@
 ﻿using LTASBM.Agent.Handlers;
-using LTASBM.Agent.Utilities;
 using Relativity.API;
 using Relativity.Services.Objects.DataContracts;
 using System;
@@ -60,7 +59,7 @@ namespace LTASBM.Agent.Routines
                                              $"Object Created: {result.Object != null}");
 
                             emailBody.AppendLine($"Client - {{ArtifactID - {record.EddsClientArtifactId};Number - {record.EddsClientNumber};Name - {record.EddsClientName} created in billing database, New object artifactid -{result.Object.ArtifactID}");
-                            Emails.DebugEmail(instanceSettings, emailBody);
+                            MessageHandler.Email.SendDebugEmail(instanceSettings, emailBody);
                         }
                         else if (result != null && result.Object == null)
                         {
@@ -80,7 +79,7 @@ namespace LTASBM.Agent.Routines
                                     }
                                 }
                             }
-                            Emails.DebugEmail(instanceSettings, emailBody);
+                            MessageHandler.Email.SendDebugEmail(instanceSettings, emailBody);
                         }
                         else if (result == null)
                         {
@@ -97,7 +96,7 @@ namespace LTASBM.Agent.Routines
                                     }
                                 }
                             }
-                            Emails.DebugEmail(instanceSettings, emailBody);
+                            MessageHandler.Email.SendDebugEmail(instanceSettings, emailBody);
                         }
                     }
                 }
