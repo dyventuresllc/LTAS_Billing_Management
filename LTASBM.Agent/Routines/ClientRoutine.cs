@@ -48,6 +48,8 @@ namespace LTASBM.Agent.Routines
                     
                     foreach (var record in missingInBilling)
                     { 
+                        //HELP: I believe the result isnt running or logging the error properly I do recall i had an issue with invalid guid being used on the create but i fixed it and added a int field update so I'm taking that out now. 
+                        //      but definetly maynot not logging correctly to catch the issue on the call for the create new client.
                         CreateResult result = await objectHandler.CreateNewClient(billingManagementDatabase, record.EddsClientNumber, record.EddsClientName, record.EddsClientArtifactId);
                         if (result != null && result.Object != null)
                         {
