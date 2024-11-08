@@ -113,23 +113,46 @@ namespace LTASBM.Agent.Handlers
                     {
                         new FieldRefValuePair
                         {
-                            Field = new FieldRef { Guid = matterNumberField }, Value = matterNumberValue
+                            Field = new FieldRef 
+                            { 
+                                Guid = matterNumberField 
+                            }, 
+                            Value = matterNumberValue
                         },
                         new FieldRefValuePair
                         {
-                            Field = new FieldRef { Guid = matterNameField }, Value= matterNameValue
+                            Field = new FieldRef 
+                            { 
+                                Guid = matterNameField 
+                            }, 
+                            Value= matterNameValue
                         },
                         new FieldRefValuePair
                         {
-                            Field = new FieldRef { Guid = matterEddsArtifactIdField }, Value = matterEddsArtifactIdValue
+                            Field = new FieldRef 
+                            { 
+                                Guid = matterEddsArtifactIdField 
+                            }, 
+                            Value = matterEddsArtifactIdValue
                         },
                         new FieldRefValuePair
                         {
-                            Field = new FieldRef { Guid = matterGUIDField }, Value= Guid.NewGuid()
+                            Field = new FieldRef 
+                            { 
+                                Guid = matterGUIDField 
+                            }, 
+                            Value= Guid.NewGuid()
                         },
                         new FieldRefValuePair
                         {
-                            Field = new FieldRef { Guid = matterClientObjectField }, Value = new ObjectRef{ ArtifactID = matterClientObjectArtifactIdValue }
+                            Field = new FieldRef 
+                            { 
+                                Guid = matterClientObjectField 
+                            }, 
+                            Value = new RelativityObjectRef 
+                            { 
+                                ArtifactID = matterClientObjectArtifactIdValue 
+                            }
                         }
                     }
                 };                        
