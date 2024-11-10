@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Net.Mail;
 using System.Net;
 using System.Text;
+using System.Linq;
 
 namespace LTASBM.Agent.Handlers
 {
@@ -63,7 +64,7 @@ namespace LTASBM.Agent.Handlers
             htmlBody.AppendLine("</table>");
             htmlBody.AppendLine("<p>&nbsp;</p>");
             // Client link
-            htmlBody.AppendLine($"<p><a href=\"https://qe-us.relativity.one/Relativity/RelativityInternal.aspx?AppID=-1&ArtifactTypeID=5&ArtifactID={clients.EddsClientArtifactId}&Mode=Forms&FormMode=view&LayoutID=null&SelectedTab=null\">Click here to view the record</a></p>");
+            htmlBody.AppendLine($"<p><a href=\"https://qe-us.relativity.one/Relativity/RelativityInternal.aspx?AppID=-1&ArtifactTypeID=5&ArtifactID={clients.EddsClientArtifactId}&Mode=Forms&FormMode=view&LayoutID=null&SelectedTab=null\">Click here to view the record</a></p>");                                               
             htmlBody.AppendLine("<p>If you have any questions, please reach out to Damien for assistance.</p>");
             // Footer with responsive logo
             htmlBody.AppendLine("<p>");
@@ -177,7 +178,7 @@ namespace LTASBM.Agent.Handlers
             htmlBody.AppendLine("</table>");
             htmlBody.AppendLine("<p>&nbsp;</p>");
             // Client link                     
-            htmlBody.AppendLine($"<p><a href=\"https://qe-us.relativity.one/Relativity/RelativityInternal.aspx?AppID=-1&ArtifactTypeID=5&ArtifactID={matters.EddsMatterArtifactId}&Mode=Forms&FormMode=view&LayoutID=null&SelectedTab=null\">Click here to view the record</a></p>");
+            htmlBody.AppendLine($"<p><a href=\"https://qe-us.relativity.one/Relativity/RelativityInternal.aspx?AppID=-1&ArtifactTypeID=6&ArtifactID={matters.EddsMatterArtifactId}&Mode=Forms&FormMode=view&LayoutID=null&SelectedTab=null\">Click here to view the record</a></p>");
             htmlBody.AppendLine("<p>If you have any questions, please reach out to Damien for assistance.</p>");
             // Footer with responsive logo
             htmlBody.AppendLine("<p>");
@@ -208,26 +209,28 @@ namespace LTASBM.Agent.Handlers
             htmlBody.AppendLine("<body style='font-family: Arial, sans-serif;'>");
             htmlBody.AppendLine("<div class='email-table'>");
 
-            htmlBody.AppendLine("<p>The following matters exist in EDDS but are missing from the Billing workspace:</p>");
-
+            htmlBody.AppendLine("<p>The following matters exist in EDDS but are missing from the Billing workspace, they will be created:</p>");
+            htmlBody.AppendLine("<p>These may require setup on the billing page:</p>");
+            htmlBody.AppendLine("<div style=\"width: 300px;\"><img src=\"https://i.ibb.co/V20Yp5j/billingsample-optimized.png\" style=\"width: 100%;\" /></div>");
+            htmlBody.AppendLine("<br><br>");
             // Responsive table
             htmlBody.AppendLine("<table border=\"1\" bordercolor=\"#ccc\" cellpadding=\"5\" cellspacing=\"0\" style=\"border-collapse:collapse; max-width: 600px; width: 100%; margin: 0 auto;\">");
             htmlBody.AppendLine("\t<tbody>");
             htmlBody.AppendLine("\t\t<tr style=\"background-color: #f2f2f2;\">");
-            htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;\">Matter Name</th>");
-            htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;\">Matter Number</th>");
-            htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;\">Matter EDDS ArtifactId</th>");
-            htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;\">Created By</th>");
+            htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;white-space: nowrap;\">Matter Name</th>");
+            htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;white-space: nowrap;\">Matter Number</th>");
+            htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;white-space: nowrap;\">Matter EDDS ArtifactId</th>");
+            htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;white-space: nowrap;\">Created By</th>");
             htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;\">Link</th>");
             htmlBody.AppendLine("\t\t</tr>");
 
             foreach (var record in matters)
             {
                 htmlBody.AppendLine("\t\t<tr>");
-                htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;'>{record.EddsMatterName}</td>");
-                htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;'>{record.EddsMatterNumber}</td>");
-                htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;'>{record.EddsMatterArtifactId}</td>");
-                htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;'>{record.EddsMatterCreatedByFirstName}</td>");
+                htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;white-space: nowrap;'>{record.EddsMatterName}</td>");
+                htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;white-space: nowrap;'>{record.EddsMatterNumber}</td>");
+                htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;white-space: nowrap;'>{record.EddsMatterArtifactId}</td>");
+                htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;white-space: nowrap;'>{record.EddsMatterCreatedByFirstName}</td>");
                 htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;'><a href=\"https://qe-us.relativity.one/Relativity/RelativityInternal.aspx?AppID=-1&ArtifactTypeID=5&ArtifactID={record.EddsMatterArtifactId}&Mode=Forms&FormMode=view&LayoutID=null&SelectedTab=null\">View</a></td>");
                 htmlBody.AppendLine("\t\t</tr>");                           
             }
@@ -245,6 +248,60 @@ namespace LTASBM.Agent.Handlers
             htmlBody.AppendLine("</div>");
             htmlBody.AppendLine("</body></html>");
 
+            return htmlBody;
+        }
+        public static StringBuilder DuplicateMattersEmailBody(StringBuilder htmlBody, List<EddsMatters> duplicateMatters)
+        {
+            htmlBody.AppendLine("<html><body style='font-family: Arial, sans-serif;'>");
+            htmlBody.AppendLine("<h3 style=\"color: #d9534f;\">Duplicate matter numbers:</h3>");
+
+            var groupedDuplicates = duplicateMatters
+                .GroupBy(c => c.EddsMatterNumber)
+                .OrderBy(g => g.Key);
+
+            foreach (var group in groupedDuplicates)
+            {
+                htmlBody.AppendLine("<div style='margin-bottom: 20px; background-color: #f9f9f9; padding: 15px; border-radius: 5px;'>");
+                htmlBody.AppendLine($"<h3 style='color: #333; margin-top: 0;'>Matter Number: {group.Key}</h3>");
+
+                foreach (var client in group)
+                {
+                    htmlBody.AppendLine("<div style='margin-left: 20px; padding: 10px; background-color: white; border-left: 4px solid #5bc0de; margin-bottom: 10px;'>");
+                    htmlBody.AppendLine($"<div>ArtifactID:{client.EddsMatterArtifactId}</div>");
+                    htmlBody.AppendLine($"<div>Name:{client.EddsMatterName}</div>");
+                    htmlBody.AppendLine($"<div>Created By:{client.EddsMatterCreatedByFirstName}</div>");
+                    htmlBody.AppendLine("</div>");
+                }
+                htmlBody.AppendLine("</div>");
+            }
+            htmlBody.AppendLine("</body></html>");            
+            return htmlBody;
+        }
+        public static StringBuilder DuplicateClientEmailBody(StringBuilder htmlBody, List<EddsClients> duplicateClients)
+        {
+            htmlBody.AppendLine("<html><body style='font-family: Arial, sans-serif;'>");
+            htmlBody.AppendLine("<h3 style=\"color: #d9534f;\">Duplicate client numbers:</h3>");
+
+            var groupedDuplicates = duplicateClients
+                .GroupBy(c => c.EddsClientNumber)
+                .OrderBy(g => g.Key);
+
+            foreach (var group in groupedDuplicates)
+            {
+                htmlBody.AppendLine("<div style='margin-bottom: 20px; background-color: #f9f9f9; padding: 15px; border-radius: 5px;'>");
+                htmlBody.AppendLine($"<h3 style='color: #333; margin-top: 0;'>Client Number: {group.Key}</h3>");
+
+                foreach (var client in group)
+                {
+                    htmlBody.AppendLine("<div style='margin-left: 20px; padding: 10px; background-color: white; border-left: 4px solid #5bc0de; margin-bottom: 10px;'>");
+                    htmlBody.AppendLine($"<div>ArtifactID:{client.EddsClientArtifactId}</div>");
+                    htmlBody.AppendLine($"<div>Name:{client.EddsClientName}</div>");
+                    htmlBody.AppendLine($"<div>Created By:{client.EddsClientCreatedByFirstName}</div>");
+                    htmlBody.AppendLine("</div>");
+                }
+                htmlBody.AppendLine("</div>");
+            }
+            htmlBody.AppendLine("</body></html>");
             return htmlBody;
         }
         public static StringBuilder DataOutput(StringBuilder htmlBody, EddsClients clients)
@@ -430,7 +487,7 @@ namespace LTASBM.Agent.Handlers
                     smtpClient.Send(emailMessage);
                 }
             }
-            public static void SendNewMattersReporting(IInstanceSettingsBundle instanceSettingsBundle, StringBuilder htmlBody, string emailAddress)
+            public static void SendNewMattersReporting(IInstanceSettingsBundle instanceSettingsBundle, StringBuilder htmlBody)
             {
                 SMTPSetting smtpPassword = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPassword" };
                 SMTPSetting smtpPort = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPort" };
@@ -458,8 +515,9 @@ namespace LTASBM.Agent.Handlers
                     Subject = $"{smtpEnvironmentValue.Split('-')[1].Split('.')[0].ToUpper()} - New Matters To Be Created",
                     Body = htmlBody.ToString(),
                     IsBodyHtml = true
-                };
-                emailMessage.To.Add(emailAddress);
+                };                
+                emailMessage.To.Add("damienyoung@quinnemanuel.com");
+                //emailMessage.To.Add("calaustin@quinnemanuel.com");
                 emailMessage.ReplyToList.Add(new MailAddress("damienyoung@quinnemanuel.com", "Damien Young"));
 
                 using (var smtpClient = new SmtpClient())
@@ -474,7 +532,7 @@ namespace LTASBM.Agent.Handlers
                     smtpClient.Send(emailMessage);
                 }
             }
-            public static void SendDebugEmail(IInstanceSettingsBundle instanceSettingsBundle, StringBuilder htmlBody)
+            public static void SendDebugEmail(IInstanceSettingsBundle instanceSettingsBundle, StringBuilder htmlBody, string emailSubject)
             {
                 SMTPSetting smtpPassword = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPassword" };
                 SMTPSetting smtpPort = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPort" };
@@ -499,7 +557,7 @@ namespace LTASBM.Agent.Handlers
                 var emailMessage = new MailMessage
                 {
                     From = new MailAddress("noreply@relativity.one", "LTAS Billing Management"),
-                    Subject = $"{smtpEnvironmentValue.Split('-')[1].Split('.')[0].ToUpper()} - debug message",
+                    Subject = $"{smtpEnvironmentValue.Split('-')[1].Split('.')[0].ToUpper()} - {emailSubject}",
                     Body = htmlBody.ToString(),
                     IsBodyHtml = true
                 };

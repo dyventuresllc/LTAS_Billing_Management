@@ -36,8 +36,8 @@ namespace LTASBM.Agent.Handlers
             {
                 string methodName = "LookupClientArtifactID";
                 string errorMessage = ex.InnerException != null
-                    ? String.Concat($"Method: {methodName} --- ", ex.InnerException.Message, "---", ex.StackTrace)
-                    : String.Concat($"Method: {methodName} --- ", ex.Message, "---", ex.StackTrace);
+                    ? String.Concat($"Method: {methodName} ---Value:{clientNumberValue} ", ex.InnerException.Message, "---", ex.StackTrace)
+                    : String.Concat($"Method: {methodName} ---Value:{clientNumberValue} ", ex.Message, "---", ex.StackTrace);
 
                 logger.ForContext<ObjectHandler>()
                       .LogError($"Error in {nameof(LookupClientArtifactID)}: {errorMessage}");
@@ -145,13 +145,13 @@ namespace LTASBM.Agent.Handlers
                         },
                         new FieldRefValuePair
                         {
-                            Field = new FieldRef 
-                            { 
-                                Guid = matterClientObjectField 
-                            }, 
-                            Value = new RelativityObjectRef 
-                            { 
-                                ArtifactID = matterClientObjectArtifactIdValue 
+                            Field = new FieldRef
+                            {
+                                Guid = matterClientObjectField
+                            },
+                            Value = new RelativityObjectRef
+                            {
+                                ArtifactID = matterClientObjectArtifactIdValue
                             }
                         }
                     }
