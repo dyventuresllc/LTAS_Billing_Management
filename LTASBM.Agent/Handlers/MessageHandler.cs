@@ -213,6 +213,8 @@ namespace LTASBM.Agent.Handlers
             htmlBody.AppendLine("<p>These may require setup on the billing page:</p>");
             htmlBody.AppendLine("<div style=\"width: 300px;\"><img src=\"https://i.ibb.co/V20Yp5j/billingsample-optimized.png\" style=\"width: 100%;\" /></div>");
             htmlBody.AppendLine("<br><br>");
+            htmlBody.AppendLine("<br><br>");
+            htmlBody.AppendLine("<br><br>");
             // Responsive table
             htmlBody.AppendLine("<table border=\"1\" bordercolor=\"#ccc\" cellpadding=\"5\" cellspacing=\"0\" style=\"border-collapse:collapse; max-width: 600px; width: 100%; margin: 0 auto;\">");
             htmlBody.AppendLine("\t<tbody>");
@@ -517,7 +519,7 @@ namespace LTASBM.Agent.Handlers
                     IsBodyHtml = true
                 };                
                 emailMessage.To.Add("damienyoung@quinnemanuel.com");
-                //emailMessage.To.Add("calaustin@quinnemanuel.com");
+                emailMessage.To.Add("calaustin@quinnemanuel.com");
                 emailMessage.ReplyToList.Add(new MailAddress("damienyoung@quinnemanuel.com", "Damien Young"));
 
                 using (var smtpClient = new SmtpClient())
