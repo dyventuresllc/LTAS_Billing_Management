@@ -6,6 +6,8 @@ using System.Net.Mail;
 using System.Net;
 using System.Text;
 using System.Linq;
+using System.Web;
+
 
 namespace LTASBM.Agent.Handlers
 {
@@ -214,7 +216,6 @@ namespace LTASBM.Agent.Handlers
             htmlBody.AppendLine("<div style=\"width: 300px;\"><img src=\"https://i.ibb.co/V20Yp5j/billingsample-optimized.png\" style=\"width: 100%;\" /></div>");
             htmlBody.AppendLine("<br><br>");
             htmlBody.AppendLine("<br><br>");
-            htmlBody.AppendLine("<br><br>");
             // Responsive table
             htmlBody.AppendLine("<table border=\"1\" bordercolor=\"#ccc\" cellpadding=\"5\" cellspacing=\"0\" style=\"border-collapse:collapse; max-width: 600px; width: 100%; margin: 0 auto;\">");
             htmlBody.AppendLine("\t<tbody>");
@@ -303,6 +304,168 @@ namespace LTASBM.Agent.Handlers
                 }
                 htmlBody.AppendLine("</div>");
             }
+            htmlBody.AppendLine("</body></html>");
+            return htmlBody;
+        }
+        public static StringBuilder InvalidWorkspaceEmailBody(StringBuilder htmlBody, List<BillingWorkspaces> billingWorkspaces)
+        {
+            htmlBody.AppendLine("<!DOCTYPE html>");
+            htmlBody.AppendLine("<html>");
+            htmlBody.AppendLine("<head>");
+            htmlBody.AppendLine("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
+            htmlBody.AppendLine("<style>");
+            htmlBody.AppendLine("@media screen and (max-width: 600px) {");
+            htmlBody.AppendLine("  table { width: 100% !important; font-size: 14px; }");
+            htmlBody.AppendLine("  img { max-width: 100% !important; height: auto !important; }");
+            htmlBody.AppendLine("  th, td { display: block; width: 100%; box-sizing: border-box; }");
+            htmlBody.AppendLine("  th { text-align: left; }");
+            htmlBody.AppendLine("}");
+            htmlBody.AppendLine(".logo-image { width: 20px; height: 10px; vertical-align: middle; }");
+            htmlBody.AppendLine(".email-table { max-width: 800px; width: 100%; margin: 0 auto; }");
+            htmlBody.AppendLine(".invalid-value { color: red; font-weight: bold; }");
+            htmlBody.AppendLine("</style>");
+            htmlBody.AppendLine("</head>");
+            htmlBody.AppendLine("<body style='font-family: Arial, sans-serif;'>");
+            htmlBody.AppendLine("<div class='email-table'>");
+
+            htmlBody.AppendLine("<p>The following workspaces have an invalid Workspace ArtifactId or EDDS workspace ArtifactId:</p>");
+
+            // Responsive table
+            htmlBody.AppendLine("<table border=\"1\" bordercolor=\"#ccc\" cellpadding=\"5\" cellspacing=\"0\" style=\"border-collapse:collapse; max-width: 800px; width: 100%; margin: 0 auto;\">");
+            htmlBody.AppendLine("\t<tbody>");
+            htmlBody.AppendLine("\t\t<tr style=\"background-color: #f2f2f2;\">");
+            htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;\">Billing Workspace ArtifactId</th>");
+            htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;\">Billing Workspace EDDS ArtifactID</th>");
+            htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;white-space: nowrap;\">Workspace Name</th>");
+            htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;white-space: nowrap;\">Created By</th>");
+            htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;white-space: nowrap;\">Created On</th>");
+            htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;white-space: nowrap;\">Matter ArtifactId</th>");
+            htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;white-space: nowrap;\">Analyst</th>");
+            htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;white-space: nowrap;\">Case Team</th>");
+            htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;white-space: nowrap;\">Status</th>");
+            htmlBody.AppendLine("\t\t</tr>");
+
+            foreach (var record in billingWorkspaces)
+            {
+                htmlBody.AppendLine("\t\t<tr>");
+                // Highlight invalid values in red
+                htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;{(record.BillingWorkspaceArtifactId == 0 ? " color: red; font-weight: bold;" : "")}'>{record.BillingWorkspaceArtifactId}</td>");
+                htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;{(record.BillingWorkspaceEddsArtifactId == 0 ? " color: red; font-weight: bold;" : "")}'>{record.BillingWorkspaceEddsArtifactId}</td>");
+                htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;white-space: nowrap;'>{HttpUtility.HtmlEncode(record.BillingWorkspaceName)}</td>");
+                htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;white-space: nowrap;'>{HttpUtility.HtmlEncode(record.BillingWorkspaceCreatedBy)}</td>");
+                htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;white-space: nowrap;'>{record.BillingWorkspaceCreatedOn:yyyy-MM-dd HH:mm}</td>");
+                htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;white-space: nowrap;'>{record.BillingWorkspaceMatterArtifactId}</td>");
+                htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;white-space: nowrap;'>{HttpUtility.HtmlEncode(record.BillingWorkspaceAnalyst)}</td>");
+                htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;white-space: nowrap;'>{HttpUtility.HtmlEncode(record.BillingWorkspaceCaseTeam)}</td>");
+                htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;white-space: nowrap;'>{HttpUtility.HtmlEncode(record.BillingStatusName)}</td>");
+                htmlBody.AppendLine("\t\t</tr>");
+            }
+
+            htmlBody.AppendLine("\t</tbody>");
+            htmlBody.AppendLine("</table>");
+            htmlBody.AppendLine("<p>&nbsp;</p>");
+
+            // Footer with responsive logo
+            htmlBody.AppendLine("<p style='margin-top: 20px;'>");
+            htmlBody.AppendLine("<img class='logo-image' alt=\"LTAS Logo\" src=\"https://i.ibb.co/H7g8BSz/LTASLogo-small.png\" /> ");
+            htmlBody.AppendLine("<span style='font-size: 12px; font-weight: bold;'>LTAS Billing Automations</span>");
+            htmlBody.AppendLine("</p>");
+
+            htmlBody.AppendLine("<p style='font-size: 12px; font-weight: bold; color: #666;'>[FYI: this job runs once an hour]</p>");
+
+            htmlBody.AppendLine("</div>");
+            htmlBody.AppendLine("</body></html>");
+
+            return htmlBody;
+        }
+        public static StringBuilder DuplicateWorkspacesEmailBody(StringBuilder htmlBody, List<BillingWorkspaces> duplicateWorkspaces)
+        {
+            htmlBody.AppendLine("<html><body style='font-family: Arial, sans-serif;'>");
+            htmlBody.AppendLine("<h3 style=\"color: #d9534f;\">Duplicate EDDS Workspace ArtifactIDs:</h3>");
+
+            var groupedDuplicates = duplicateWorkspaces
+                .GroupBy(w => w.BillingWorkspaceEddsArtifactId)
+                .OrderBy(g => g.Key);
+
+            foreach (var group in groupedDuplicates)
+            {
+                htmlBody.AppendLine("<div style='margin-bottom: 20px; background-color: #f9f9f9; padding: 15px; border-radius: 5px;'>");
+                htmlBody.AppendLine($"<h3 style='color: #333; margin-top: 0;'>EDDS Workspace ArtifactId: {group.Key}</h3>");
+
+                foreach (var workspace in group)
+                {
+                    htmlBody.AppendLine("<div style='margin-left: 20px; padding: 10px; background-color: white; border-left: 4px solid #5bc0de; margin-bottom: 10px;'>");
+                    htmlBody.AppendLine($"<div>Billing Workspace ArtifactID: {workspace.BillingWorkspaceArtifactId}</div>");
+                    htmlBody.AppendLine($"<div>Workspace Name: {workspace.BillingWorkspaceName}</div>");
+                    htmlBody.AppendLine($"<div>Created By: {workspace.BillingWorkspaceCreatedBy}</div>");
+                    htmlBody.AppendLine($"<div>Created On: {workspace.BillingWorkspaceCreatedOn:yyyy-MM-dd HH:mm}</div>");
+                    htmlBody.AppendLine($"<div>Matter ArtifactId: {workspace.BillingWorkspaceMatterArtifactId}</div>");
+                    htmlBody.AppendLine($"<div>Status: {workspace.BillingStatusName}</div>");
+                    htmlBody.AppendLine("</div>");
+                }
+                htmlBody.AppendLine("</div>");
+            }
+            htmlBody.AppendLine("</body></html>");
+            return htmlBody;
+        }
+        public static StringBuilder NewWorkspacesEmailBody(StringBuilder htmlBody, List<EddsWorkspaces> workspaces)
+        {
+            htmlBody.AppendLine("<!DOCTYPE html>");
+            htmlBody.AppendLine("<html>");
+            htmlBody.AppendLine("<head>");
+            htmlBody.AppendLine("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
+            htmlBody.AppendLine("<style>");
+            htmlBody.AppendLine("@media screen and (max-width: 600px) {");
+            htmlBody.AppendLine("  table { width: 100% !important; font-size: 14px; }");
+            htmlBody.AppendLine("  img { max-width: 100% !important; height: auto !important; }");
+            htmlBody.AppendLine("}");
+            htmlBody.AppendLine(".logo-image { width: 20px; height: 10px; vertical-align: middle; }");
+            htmlBody.AppendLine(".email-table { max-width: 800px; width: 100%; margin: 0 auto; }");
+            htmlBody.AppendLine("</style>");
+            htmlBody.AppendLine("</head>");
+            htmlBody.AppendLine("<body style='font-family: Arial, sans-serif;'>");
+            htmlBody.AppendLine("<div class='email-table'>");
+
+            htmlBody.AppendLine("<p>The following workspaces exist in EDDS but are missing from the Billing workspace, they will be created:</p>");
+
+            // Responsive table
+            htmlBody.AppendLine("<table border=\"1\" bordercolor=\"#ccc\" cellpadding=\"5\" cellspacing=\"0\" style=\"border-collapse:collapse; max-width: 600px; width: 100%; margin: 0 auto;\">");
+            htmlBody.AppendLine("\t<tbody>");
+            htmlBody.AppendLine("\t\t<tr style=\"background-color: #f2f2f2;\">");
+            htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;white-space: nowrap;\">Workspace Name</th>");
+            htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;white-space: nowrap;\">EDDS ArtifactId</th>");
+            htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;white-space: nowrap;\">Created By</th>");
+            htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;white-space: nowrap;\">Created On</th>");
+            htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;white-space: nowrap;\">Matter ArtifactId</th>");
+            htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;white-space: nowrap;\">Status</th>");
+            htmlBody.AppendLine("\t\t\t<th style=\"padding: 8px;\">Link</th>");
+            htmlBody.AppendLine("\t\t</tr>");
+
+            foreach (var record in workspaces)
+            {
+                htmlBody.AppendLine("\t\t<tr>");
+                htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;white-space: nowrap;'>{record.EddsWorkspaceName}</td>");
+                htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;white-space: nowrap;'>{record.EddsWorkspaceArtifactId}</td>");
+                htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;white-space: nowrap;'>{record.EddsWorkspaceCreatedBy}</td>");
+                htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;white-space: nowrap;'>{record.EddsWorkspaceCreatedOn:yyyy-MM-dd HH:mm}</td>");
+                htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;white-space: nowrap;'>{record.EddsWorkspaceMatterArtifactId}</td>");
+                htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;white-space: nowrap;'>{record.EddsWorkspaceStatusName}</td>");
+                htmlBody.AppendLine($"\t\t\t<td style='padding: 8px;'><a href=\"https://qe-us.relativity.one/Relativity/RelativityInternal.aspx?AppID=-1&ArtifactTypeID=8&ArtifactID={record.EddsWorkspaceArtifactId}&Mode=Forms&FormMode=view&LayoutID=null&SelectedTab=null\">View</a></td>");
+                htmlBody.AppendLine("\t\t</tr>");
+            }
+
+            htmlBody.AppendLine("\t</tbody>");
+            htmlBody.AppendLine("</table>");
+            htmlBody.AppendLine("<p>&nbsp;</p>");
+
+            // Footer with responsive logo
+            htmlBody.AppendLine("<p>");
+            htmlBody.AppendLine("<img class='logo-image' alt=\"\" src=\"https://i.ibb.co/H7g8BSz/LTASLogo-small.png\" /> ");
+            htmlBody.AppendLine("<small><var><code><strong>LTAS Billing Automations</strong></code></var></small>");
+            htmlBody.AppendLine("</p>");
+            htmlBody.AppendLine("<p><small><var><code><strong>[FYI: this job runs once an hour]</strong></code></var></small></p>");
+
+            htmlBody.AppendLine("</div>");
             htmlBody.AppendLine("</body></html>");
             return htmlBody;
         }

@@ -22,7 +22,7 @@ namespace LTASBM.Agent
             IAPILog logger = Helper.GetLoggerFactory().GetLogger().ForContext<LTASBillingWorker>();
             RaiseMessage("starting...", 10);
 
-
+            
             try
             {
                 var eddsDbContext = Helper.GetDBContext(-1);
@@ -39,6 +39,8 @@ namespace LTASBM.Agent
                         ProcessBillingJobsAsync(billingDatabaseId, objectManager, dataHandler, instanceSettingManager, logger).GetAwaiter().GetResult();                       
                         UpdateJobExecutionTime(eddsDbContext, jobId);
                     }
+                   
+                    
                 }
             }
             catch (Exception ex)
@@ -52,7 +54,7 @@ namespace LTASBM.Agent
 
         private async Task ProcessBillingJobsAsync(int billingDatabaseId, IObjectManager objectManager, DataHandler dataHandler, IInstanceSettingsBundle instanceSettingManager, IAPILog logger)
         {
-            var clientRoutine = new ClientRoutine(logger);
+            var clientRoutine = new ClientRoutine(logger, Helper);
 
             await Task.Run(async () =>
             {
@@ -63,7 +65,7 @@ namespace LTASBM.Agent
                     instanceSettingManager);
             }).ConfigureAwait(false);
 
-            var matterRoutine = new MatterRoutine(logger);
+            var matterRoutine = new MatterRoutine(logger, Helper);
 
             await Task.Run(async () =>
             {
@@ -72,6 +74,17 @@ namespace LTASBM.Agent
                     objectManager,
                     dataHandler,
                     instanceSettingManager);
+            }).ConfigureAwait(false);
+
+            var workspaceRoutine = new WorkspaceRoutine(logger, Helper);
+
+            await Task.Run(async () =>
+            {
+                  await workspaceRoutine.ProcessWorkspaceRoutines(
+                      billingDatabaseId, 
+                      objectManager, 
+                      dataHandler, 
+                      instanceSettingManager);
             }).ConfigureAwait(false);
         }        
 

@@ -14,10 +14,12 @@ namespace LTASBM.Agent.Routines
     public class ClientRoutine
     {
         private readonly IAPILog _logger;
+        private readonly IHelper _helper;
 
-        public ClientRoutine(IAPILog logger)
+        public ClientRoutine(IAPILog logger, IHelper helper)
         {
             _logger = logger.ForContext<ClientRoutine>();
+            _helper = helper ?? throw new ArgumentNullException(nameof(helper));
         }
 
         public async Task ProcessClientRoutines(int billingManagementDatabase, IObjectManager objectManager, DataHandler dataHandler, IInstanceSettingsBundle instanceSettings)
@@ -97,7 +99,8 @@ namespace LTASBM.Agent.Routines
                             record.EddsClientNumber,
                             record.EddsClientName,
                             record.EddsClientArtifactId,
-                            _logger);
+                            _logger,
+                            _helper);
 
                         if (result == null)
                         {

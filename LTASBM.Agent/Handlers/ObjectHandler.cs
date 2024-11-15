@@ -6,57 +6,26 @@ using Relativity.API;
 using Relativity.Services.Objects;
 using Relativity.Services.Objects.DataContracts;
 using System.Runtime.CompilerServices;
+using LTASBM.Agent.Utilites;
+using System.Runtime.Remoting.Messaging;
+using kCura.Vendor.Castle.MicroKernel.Internal;
+using System.Web.WebSockets;
 
 namespace LTASBM.Agent.Handlers
 {
     public class ObjectHandler
-    {
-        public static async Task<int> LookupClientArtifactID(IObjectManager objectManager, int workspaceArtifactId, string clientNumberValue, IAPILog logger)
-        {            
-            Guid objectType = new Guid("628EC03F-E789-40AF-AA13-351F92FFA44D");
-
-            try
-            {
-                var queryRequest = new QueryRequest
-                {
-                    ObjectType = new ObjectTypeRef
-                    {
-                        Guid = objectType
-                    },
-                    Fields = new FieldRef[]
-                    {
-                        new FieldRef{ Name = "ArtifactID" }
-                    },
-                    Condition = $"'Client Number' == '{clientNumberValue.Trim()}'"
-                };
-                var result = await objectManager.QueryAsync(workspaceArtifactId, queryRequest, 0, 1);
-                return result.Objects[0].ArtifactID;
-            }
-            catch (Exception ex)
-            {
-                string methodName = "LookupClientArtifactID";
-                string errorMessage = ex.InnerException != null
-                    ? String.Concat($"Method: {methodName} ---Value:{clientNumberValue} ", ex.InnerException.Message, "---", ex.StackTrace)
-                    : String.Concat($"Method: {methodName} ---Value:{clientNumberValue} ", ex.Message, "---", ex.StackTrace);
-
-                logger.ForContext<ObjectHandler>()
-                      .LogError($"Error in {nameof(LookupClientArtifactID)}: {errorMessage}");
-                return 0;
-            }
-        }
-        public static async Task<CreateResult>CreateNewClient(IObjectManager objectManager, int workspaceArtifactId, string clientNumberValue, string clientNameValue, int clientEddsArtifactIdValue, IAPILog logger)
-        {            
-            Guid clientNumberField = new Guid("C3F4236F-B59B-48B5-99C8-3678AA5EEA72");
-            Guid clientNameField = new Guid("E704BF08-C187-4EAB-9A25-51C17AA98FB9");
-            Guid clientEDDSArtifactIdField = new Guid("1A30F07F-1E5C-4177-BB43-257EF7588660");
-
+    {        
+        public static async Task<CreateResult>CreateNewClient(IObjectManager objectManager, int workspaceArtifactId, string clientNumberValue, string clientNameValue, int clientEddsArtifactIdValue, IAPILog logger, IHelper helper)
+        {
+            var ltasHelper = new LTASBMHelper(helper, logger);
+                        
             try
             {
                 var createRequest = new CreateRequest
                 {
                     ObjectType = new ObjectTypeRef
                     {
-                        Guid = new Guid("628EC03F-E789-40AF-AA13-351F92FFA44D")
+                        Guid = ltasHelper.ClientObjectType
                     }
                     ,
                     FieldValues = new List<FieldRefValuePair>
@@ -65,7 +34,7 @@ namespace LTASBM.Agent.Handlers
                         {
                             Field = new FieldRef
                             {
-                            Guid = clientNumberField
+                            Guid = ltasHelper.ClientNumberField
                             },
                             Value = clientNumberValue
                         },
@@ -73,7 +42,7 @@ namespace LTASBM.Agent.Handlers
                         {
                             Field = new FieldRef
                             {
-                            Guid= clientNameField
+                            Guid= ltasHelper.ClientNameField
                             },
                             Value = clientNameValue
                         },
@@ -81,7 +50,7 @@ namespace LTASBM.Agent.Handlers
                         {
                             Field = new FieldRef
                             {
-                            Guid= clientEDDSArtifactIdField
+                            Guid=  ltasHelper.ClientEDDSArtifactIdField
                             },
                             Value = clientEddsArtifactIdValue
                         }
@@ -96,26 +65,22 @@ namespace LTASBM.Agent.Handlers
                 return null;
             }           
         }
-
-        public static async Task<CreateResult>CreateNewMatter(IObjectManager objectManager, int workspaceArtifactId, string matterNumberValue, string matterNameValue, int matterEddsArtifactIdValue, int matterClientObjectArtifactIdValue, IAPILog logger)
+        public static async Task<CreateResult>CreateNewMatter(IObjectManager objectManager, int workspaceArtifactId, string matterNumberValue, string matterNameValue, int matterEddsArtifactIdValue, int matterClientObjectArtifactIdValue, IAPILog logger, IHelper helper)
         {
-            Guid matterNumberField = new Guid("3A8B7AC8-0393-4C48-9F58-C60980AE8107");
-            Guid matterNameField = new Guid("C375AA14-D5CD-484C-91D5-35B21826AD14");
-            Guid matterEddsArtifactIdField = new Guid("8F134CD2-4DB1-48E4-8479-2F7E7B18CF9F");
-            Guid matterGUIDField = new Guid("4E41FF7F-9D1C-4502-96D9-DFBB9252B3E6");
-            Guid matterClientObjectField = new Guid("0DD5C18A-35F8-4CF1-A00B-7814FA3A5788");
+            var ltasHelper = new LTASBMHelper(helper, logger);
+
             try
             {
                 var createRequest = new CreateRequest
                 {
-                    ObjectType = new ObjectTypeRef { Guid = new Guid("18DA4321-AAFB-4B24-99E9-13F90090BF1B") },
+                    ObjectType = new ObjectTypeRef { Guid = ltasHelper.MatterObjectType },
                     FieldValues = new List<FieldRefValuePair>
                     {
                         new FieldRefValuePair
                         {
                             Field = new FieldRef 
                             { 
-                                Guid = matterNumberField 
+                                Guid = ltasHelper.MatterNumberField
                             }, 
                             Value = matterNumberValue
                         },
@@ -123,7 +88,7 @@ namespace LTASBM.Agent.Handlers
                         {
                             Field = new FieldRef 
                             { 
-                                Guid = matterNameField 
+                                Guid = ltasHelper.MatterNameField
                             }, 
                             Value= matterNameValue
                         },
@@ -131,7 +96,7 @@ namespace LTASBM.Agent.Handlers
                         {
                             Field = new FieldRef 
                             { 
-                                Guid = matterEddsArtifactIdField 
+                                Guid = ltasHelper.MatterEddsArtifactIdField
                             }, 
                             Value = matterEddsArtifactIdValue
                         },
@@ -139,7 +104,7 @@ namespace LTASBM.Agent.Handlers
                         {
                             Field = new FieldRef 
                             { 
-                                Guid = matterGUIDField 
+                                Guid = ltasHelper.MatterGUIDField
                             }, 
                             Value= Guid.NewGuid()
                         },
@@ -147,7 +112,7 @@ namespace LTASBM.Agent.Handlers
                         {
                             Field = new FieldRef
                             {
-                                Guid = matterClientObjectField
+                                Guid = ltasHelper.MatterClientObjectField
                             },
                             Value = new RelativityObjectRef
                             {
@@ -157,6 +122,61 @@ namespace LTASBM.Agent.Handlers
                     }
                 };                        
                 return await objectManager.CreateAsync(workspaceArtifactId, createRequest);                                    
+            }
+            catch (Exception ex)
+            {
+                string errorMessage = ex.InnerException != null ? String.Concat(ex.InnerException.Message, "---", ex.StackTrace) : String.Concat(ex.Message, "---", ex.StackTrace);
+                logger.ForContext<ObjectHandler>().LogError($"{errorMessage}");
+                return null;
+            }
+        }
+
+        public static async Task<CreateResult> CreateNewWorkspace(IObjectManager objectManager, int workspaceArtifactId, int WorkspaceArtifactIdValue, string WorkspaceCreatedByValue, DateTime workspaceCreatedOnValue, string workspaceNameValue, int WorkspaceMatterArtifactIdValue, 
+                                                                        string workspaceCaseTeamValue, string workspaceLTASAnalystValue, string workspaceStatusValue, IAPILog logger, IHelper helper)
+        {
+            var ltasHelper = new LTASBMHelper(helper, logger);
+            try
+            {
+                var createRequest = new CreateRequest
+                {
+                    ObjectType = new ObjectTypeRef { Guid = ltasHelper.WorkspaceObjectType },
+                    FieldValues = new List<FieldRefValuePair>
+                    {
+                        new FieldRefValuePair
+                        {
+                            Field = new FieldRef { Guid = ltasHelper.WorkspaceArtifactIDField }, Value = WorkspaceArtifactIdValue,
+                        },
+                        new FieldRefValuePair
+                        {
+                            Field = new FieldRef { Guid = ltasHelper.WorkspaceCreatedByField }, Value = WorkspaceCreatedByValue
+                        },
+                        new FieldRefValuePair
+                        {
+                            Field = new FieldRef { Guid = ltasHelper.WorkspaceCreatedOnField }, Value = workspaceCreatedOnValue
+                        },
+                        new FieldRefValuePair
+                        {
+                            Field = new FieldRef { Guid = ltasHelper.WorkspaceNameField }, Value = workspaceNameValue
+                        },
+                        new FieldRefValuePair
+                        {
+                            Field = new FieldRef { Guid = ltasHelper.WorkspaceLtasAnalystField }, Value = workspaceLTASAnalystValue
+                        },
+                        new FieldRefValuePair
+                        {
+                            Field = new FieldRef { Guid = ltasHelper.WorkspaceCaseTeamField }, Value = workspaceCaseTeamValue
+                        },
+                        new FieldRefValuePair
+                        {
+                            Field = new FieldRef { Guid = ltasHelper.WorkspaceMatterNumberField }, Value = new RelativityObjectRef { ArtifactID = WorkspaceMatterArtifactIdValue }
+                        },
+                        new FieldRefValuePair
+                        {
+                            Field = new FieldRef { Guid = ltasHelper.WorkspaceStatusField }, Value = new ChoiceRef{ ArtifactID = ltasHelper.GetCaseStatusArtifactID(helper.GetDBContext(workspaceArtifactId), workspaceStatusValue)}
+                        }
+                    }
+                };
+                return await objectManager.CreateAsync(workspaceArtifactId, createRequest);
             }
             catch (Exception ex)
             {

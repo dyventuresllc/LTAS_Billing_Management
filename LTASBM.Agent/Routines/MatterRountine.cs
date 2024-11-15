@@ -1,11 +1,13 @@
 ﻿using LTASBM.Agent.Handlers;
 using LTASBM.Agent.Models;
+using LTASBM.Agent.Utilites;
 using Relativity.API;
 using Relativity.Services.Objects;
 using Relativity.Services.Objects.DataContracts;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -14,10 +16,12 @@ namespace LTASBM.Agent.Routines
     public class MatterRoutine
     {
         private readonly IAPILog _logger;
+        private readonly LTASBMHelper _ltasHelper;
 
-        public MatterRoutine(IAPILog logger)
+        public MatterRoutine(IAPILog logger, IHelper helper)
         {
             _logger = logger.ForContext<MatterRoutine>();
+            _ltasHelper = new LTASBMHelper(helper, logger);
         }
         
         public async Task ProcessMatterRoutines(int billingManagementDatabase, IObjectManager objectManager, DataHandler dataHandler, IInstanceSettingsBundle instanceSettings)
@@ -89,7 +93,7 @@ namespace LTASBM.Agent.Routines
                         _logger.LogInformation("Attempting to create matter: {matterDetails}",
                                 new { record.EddsMatterArtifactId, record.EddsMatterNumber, record.EddsMatterName });
 
-                        int qryClientArtifactIDResult = await ObjectHandler.LookupClientArtifactID(objectManager, billingManagementDatabase, record.EddsMatterNumber.Substring(0, 5).ToString(), _logger);
+                        int qryClientArtifactIDResult = await _ltasHelper.LookupClientArtifactID(objectManager, billingManagementDatabase, record.EddsMatterNumber.Substring(0, 5).ToString());                            
 
                         if (qryClientArtifactIDResult == 0)
                         {
@@ -103,7 +107,8 @@ namespace LTASBM.Agent.Routines
                             record.EddsMatterName,
                             record.EddsMatterArtifactId,
                             qryClientArtifactIDResult,
-                            _logger);
+                            _logger,
+                            _ltasHelper.Helper);
 
                         if (result == null)
                         {
