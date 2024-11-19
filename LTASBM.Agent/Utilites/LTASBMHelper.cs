@@ -1,15 +1,9 @@
-﻿using kCura.Agent.CustomAttributes;
-using kCura.Vendor.Castle.Core.Internal;
-using Relativity.API;
+﻿using Relativity.API;
 using Relativity.Services.Objects;
 using Relativity.Services.Objects.DataContracts;
 using System;
-using System.Data;
 using System.Data.SqlClient;
-using System.Net.NetworkInformation;
 using System.Threading.Tasks;
-using static kCura.Vendor.Castle.MicroKernel.ModelBuilder.Descriptors.InterceptorDescriptor;
-
 
 namespace LTASBM.Agent.Utilites
 {
@@ -33,9 +27,8 @@ namespace LTASBM.Agent.Utilites
         public Guid MatterClientObjectField { get; } = new Guid("0DD5C18A-35F8-4CF1-A00B-7814FA3A5788");
 
         //Workspace Object Type and Field GUIDs
-
         public Guid WorkspaceObjectType { get; } = new Guid("27AE803F-590D-4C97-9CFD-F1B9E21690EF");
-        public Guid WorkspaceArtifactIDField { get; } = new Guid("0315B4C2-82B1-4AFE-B1DB-05D1BA348B6D");
+        public Guid WorkspaceEDDSArtifactIDField { get; } = new Guid("7625A536-4262-443E-B6ED-C0E25DB2A6C4");
         public Guid WorkspaceCreatedByField { get; } = new Guid("69B6424F-0589-4080-875F-85193D3064D0");
         public Guid WorkspaceCreatedOnField { get; } = new Guid("305A1D9E-A8D0-4EEC-A76D-FDF6839C712B");
         public Guid WorkspaceNameField { get; } = new Guid("8CECDA63-0D55-45E4-8965-0F5F6B6A5C73");
@@ -46,6 +39,8 @@ namespace LTASBM.Agent.Utilites
         public Guid WorkspaceStatusField { get; } = new Guid("4506039A-78A1-49DB-9B09-976D407E14F7");
 
         public IHelper Helper => _helper; //public property to access helper when needed
+        public IAPILog Logger => _logger; 
+
         public LTASBMHelper(IHelper helper, IAPILog logger)
         {
             _helper = helper ?? throw new ArgumentNullException(nameof(helper));
@@ -83,7 +78,38 @@ namespace LTASBM.Agent.Utilites
                 return 0;
             }
         }
+        public async Task<int> LookupMatterArtifactID(IObjectManager objectManager, int workspaceArtifactId, string EddsMatterArtifactIdValue) 
+        {
+            try
+            {
+                var queryRequest = new QueryRequest
+                {
+                    ObjectType = new ObjectTypeRef
+                    {
+                        Guid = MatterObjectType
+                    },
+                    Fields = new FieldRef[]
+                    {
+                    new FieldRef{ Name = "ArtifactID" }
+                    },
+                    Condition = $"'EDDS Matter ArtifactID' == '{EddsMatterArtifactIdValue?.Trim()}'"
+                };
 
+                var result = await objectManager.QueryAsync(workspaceArtifactId, queryRequest, 0, 1);
+                return result.Objects[0].ArtifactID;
+            }
+            catch (Exception ex)
+            {
+                string methodName = nameof(LookupMatterArtifactID);
+                string errorMessage = ex.InnerException != null
+                    ? $"Method: {methodName} ---Value:{EddsMatterArtifactIdValue} {ex.InnerException.Message}---{ex.StackTrace}"
+                    : $"Method: {methodName} ---Value:{EddsMatterArtifactIdValue} {ex.Message}---{ex.StackTrace}";
+
+                _logger.ForContext<LTASBMHelper>()
+                       .LogError($"Error in {methodName}: {errorMessage}");
+                return 0;
+            }
+        }
         public int GetWorkspaceArtifactID(IDBContext dBContext)
         {
             try
@@ -103,40 +129,6 @@ namespace LTASBM.Agent.Utilites
                 return 0;
             }
         }
-
-        public DataTable GetHyperlinkValues(IDBContext dBContext, string guidStringValue) 
-        {
-            try
-            {
-                string sql = @"SELECT
-                            ot.[Name], ot.DescriptorArtifactTypeID 'ArtifactTypeID', v.ArtifactID 'ViewArtifactID', t.ArtifactID 'TabArtifactID'
-                        FROM eddsdbo.ArtifactGuid ag WITH (NOLOCK)
-                        JOIN eddsdbo.Artifact a WITH (NOLOCK)
-                            ON ag.ArtifactID = a.ArtifactID
-                        JOIN eddsdbo.ObjectType ot
-                            ON ot.ArtifactID = ag.ArtifactID
-                        JOIN eddsdbo.[view] v WITH (NOLOCK)
-                            ON v.ArtifactTypeID = ot.DescriptorArtifactTypeID
-                        JOIN eddsdbo.Tab t WITH (NOLOCK)
-                            ON t.ObjectArtifactTypeID = ot.DescriptorArtifactTypeID
-                        WHERE ag.ArtifactGuid IN('@guidValue')
-	                        AND v.AvailableInObjectTab = 1;";
-                var parameter = new SqlParameter("@guidValue", guidStringValue);
-                return dBContext.ExecuteSqlStatementAsDataTable(sql, new[] { parameter });
-            }
-            catch (Exception ex)
-            {
-                string methodName = nameof(GetHyperlinkValues);
-                string errorMessage = ex.InnerException != null
-                    ? $"Method: {methodName} ---Value:{guidStringValue} {ex.InnerException.Message}---{ex.StackTrace}"
-                    : $"Method: {methodName} ---Value:{guidStringValue} {ex.Message}---{ex.StackTrace}";
-
-                _logger.ForContext<LTASBMHelper>()
-                       .LogError($"Error in {methodName}: {errorMessage}");
-                return new DataTable();
-            }
-        }
-
         public int GetCaseStatusArtifactID(IDBContext dBContext, string statusValue)
         {
             try
@@ -162,6 +154,70 @@ namespace LTASBM.Agent.Utilites
                 _logger.ForContext<LTASBMHelper>()
                        .LogError($"Error in {methodName}: {errorMessage}");
                 return 0;
+            }
+        }
+        public (int ArtifactTypeID, int ViewArtifactID, int TabArtifactID) GetHyperlinkValues(IDBContext dBContext, string guidStringValue) 
+        {
+            try
+            {
+                string sql = @"SELECT
+                            ot.[Name], ot.DescriptorArtifactTypeID 'ArtifactTypeID', v.ArtifactID 'ViewArtifactID', t.ArtifactID 'TabArtifactID'
+                        FROM eddsdbo.ArtifactGuid ag WITH (NOLOCK)
+                        JOIN eddsdbo.Artifact a WITH (NOLOCK)
+                            ON ag.ArtifactID = a.ArtifactID
+                        JOIN eddsdbo.ObjectType ot
+                            ON ot.ArtifactID = ag.ArtifactID
+                        JOIN eddsdbo.[view] v WITH (NOLOCK)
+                            ON v.ArtifactTypeID = ot.DescriptorArtifactTypeID
+                        JOIN eddsdbo.Tab t WITH (NOLOCK)
+                            ON t.ObjectArtifactTypeID = ot.DescriptorArtifactTypeID
+                        WHERE ag.ArtifactGuid IN('@guidValue')
+	                        AND v.AvailableInObjectTab = 1;";
+                var parameter = new SqlParameter("@guidValue", guidStringValue);
+                var result = dBContext.ExecuteSqlStatementAsDataTable(sql, new[] { parameter });
+
+                if (result.Rows.Count == 1)
+                {
+                    return (
+                        ArtifactTypeID: (int)result.Rows[0]["ArtifactTypeID"],
+                        ViewArtifactID: (int)result.Rows[0]["ViewArtifactID"],
+                        TabArtifactID: (int)result.Rows[0]["TabArtifactID"]
+                          );
+                }
+                return (0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                _logger.ForContext<LTASBMHelper>()
+               .LogError(ex,
+                        "Error getting hyperlink values for GUID: {GuidValue}",
+                        guidStringValue);
+                throw;
+            }
+        }
+        public (string FirstName, string LastName) GetUserName(IDBContext dBContext, string emailAddress)
+        {
+            try 
+            {
+                string sql = @"SELECT u.FirstName, u.LastName FROM EDDS.eddsdbo.[User] u WITH (NOLOCK) WHERE u.EmailAddress LIKE @userEmail;";
+                var parameter = new SqlParameter("@userEmail", emailAddress);
+                var result = dBContext.ExecuteSqlStatementAsDataTable(sql, new[] { parameter });
+                
+                if (result.Rows.Count == 1)
+                {
+                    return (
+                        FirstName: result.Rows[0]["FirstName"].ToString(),
+                        LastName: result.Rows[0]["LastName"].ToString()
+                    );
+                }
+
+                return (string.Empty, string.Empty);
+            }
+            catch (Exception ex) 
+            {
+                _logger.ForContext<LTASBMHelper>()
+                .LogError(ex, "Error getting user name for email {EmailAddress}", emailAddress);
+                throw;
             }
         }
     }

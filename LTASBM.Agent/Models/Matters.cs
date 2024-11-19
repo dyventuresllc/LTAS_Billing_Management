@@ -1,5 +1,4 @@
-﻿
-namespace LTASBM.Agent.Models
+﻿namespace LTASBM.Agent.Models
 {
     public class EddsMatters
     {
@@ -12,8 +11,10 @@ namespace LTASBM.Agent.Models
 
     public class BillingMatters
     {
+        public int BillingMatterArtficatId { get; set; }    
         public int BillingEddsMatterArtifactId { get; set; }
         public string BillingEddsMatterName { get;set; }
         public string BillingEddsMatterNumber { get;set; }
+        public int BillingClientId { get; set; }
     }
 }

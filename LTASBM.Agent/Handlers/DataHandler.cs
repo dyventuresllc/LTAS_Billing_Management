@@ -3,8 +3,6 @@ using Relativity.API;
 using System;
 using System.Collections.Generic;
 using System.Data;
-//using System.Net;
-//using System.Text;
 
 namespace LTASBM.Agent.Handlers
 {
@@ -46,13 +44,14 @@ namespace LTASBM.Agent.Handlers
         public List<BillingClients> BillingClients()
         {
             var clients = new List<BillingClients>();
-            string sql = @"SELECT EDDSClientArtifactID, ClientNumber, ClientName FROM eddsdbo.Client WITH (NOLOCK)";
+            string sql = @"SELECT ArtifactID, EDDSClientArtifactID, ClientNumber, ClientName FROM eddsdbo.Client WITH (NOLOCK)";
             var dt = BillingDbContext.ExecuteSqlStatementAsDataTable(sql);
 
             foreach (DataRow row in dt.Rows)
             {
                 clients.Add(new BillingClients
                 {
+                    BillingClientArtifactID = row.Field<int>("ArtifactID"),
                     BillingEddsClientArtifactId = row.Field<int>("EDDSClientArtifactID"),
                     BillingEddsClientName = row["ClientName"]?.ToString(),
                     BillingEddsClientNumber = row["ClientNumber"]?.ToString()
@@ -89,16 +88,18 @@ namespace LTASBM.Agent.Handlers
         public List<BillingMatters> BillingMatters()
         {
             var matters = new List<BillingMatters>();
-            string sql = @"SELECT EDDSMatterArtifactID, MatterNumber, MatterName FROM eddsdbo.Matter WITH (NOLOCK)";
+            string sql = @"SELECT ArtifactID, EDDSMatterArtifactID, MatterNumber, MatterName, ClientID FROM eddsdbo.Matter WITH (NOLOCK)";
             var dt = BillingDbContext.ExecuteSqlStatementAsDataTable(sql);
 
             foreach (DataRow row in dt.Rows)
             {
                 matters.Add(new BillingMatters
                 {
+                    BillingMatterArtficatId = row.Field<int>("ArtifactID"),
                     BillingEddsMatterArtifactId = row.Field<int>("EDDSMatterArtifactID"),
                     BillingEddsMatterName = row["MatterName"]?.ToString(),
-                    BillingEddsMatterNumber = row["MatterNumber"]?.ToString()
+                    BillingEddsMatterNumber = row["MatterNumber"]?.ToString(),
+                    BillingClientId = row.Field<int>("ClientID")
                 });
             }
             return matters;
@@ -176,5 +177,3 @@ namespace LTASBM.Agent.Handlers
         }
     }
 }
-
-

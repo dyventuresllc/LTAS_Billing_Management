@@ -7,7 +7,7 @@ using System.Net;
 using System.Text;
 using System.Linq;
 using System.Web;
-
+using System.Threading.Tasks;
 
 namespace LTASBM.Agent.Handlers
 {
@@ -469,11 +469,27 @@ namespace LTASBM.Agent.Handlers
             htmlBody.AppendLine("</body></html>");
             return htmlBody;
         }
-        public static StringBuilder DataOutput(StringBuilder htmlBody, EddsClients clients)
+        public static StringBuilder DataSyncNotificationEmailBody(
+            StringBuilder htmlBody,
+            IEnumerable<(int BillingArtifactID, string EddsValue)> updates, string objectName, string fieldName)
         {
+            htmlBody.AppendLine($"The following {objectName} names need to be updated in the Billing System:");
+            htmlBody.AppendLine("<br><br>");            
+            htmlBody.AppendLine("<table border='1'>");
+            htmlBody.AppendLine($"<tr><th>Billing {objectName} ArtifactID</th><th>New {fieldName}</th></tr>");
 
+            foreach (var (BillingArtifactID, EddsValue) in updates)
+            {
+                htmlBody.AppendLine("<tr>");
+                htmlBody.AppendLine($"<td>{BillingArtifactID}</td>");
+                htmlBody.AppendLine($"<td>{EddsValue}</td>");
+                htmlBody.AppendLine("</tr>");
+            }
+
+            htmlBody.AppendLine("</table>");
             return htmlBody;
         }
+
         public class Email
         {
             static string smtpPasswordValue;
@@ -481,6 +497,8 @@ namespace LTASBM.Agent.Handlers
             static string smtpUserValue;
             static string smtpServerValue;
             static string smtpEnvironmentValue;
+            static string adminEmailAddress;
+            static string teamEmailAddresses;
             private static void GetSMTPValue(string settingName, SMTPSetting smtpInstanceSettingSingle, IInstanceSettingsBundle instanceSettingsBundle)
             {
                 switch (settingName)
@@ -508,17 +526,26 @@ namespace LTASBM.Agent.Handlers
                         var singleSettingValueEnvironment = instanceSettingsBundle.GetStringAsync(smtpInstanceSettingSingle.Section, smtpInstanceSettingSingle.Name);
                         smtpEnvironmentValue = singleSettingValueEnvironment.Result;
                         break;
+                    case "AdminEmailAddress":
+                        var singleSettingValueAdmin = instanceSettingsBundle.GetStringAsync(smtpInstanceSettingSingle.Section, smtpInstanceSettingSingle.Name);
+                        adminEmailAddress = singleSettingValueAdmin.Result;
+                        break;
+                    case "TeamEmailAddresses":
+                        var singleSettingValueTeam = instanceSettingsBundle.GetStringAsync(smtpInstanceSettingSingle.Section, smtpInstanceSettingSingle.Name);
+                        teamEmailAddresses = singleSettingValueTeam.Result;
+                        break;
                 }
             }
-            public static void SentInvalidClientNumber(IInstanceSettingsBundle instanceSettingsBundle, StringBuilder htmlBody, string emailAddress)
+            public static async Task SentInvalidClientNumber(IInstanceSettingsBundle instanceSettingsBundle, StringBuilder htmlBody, string emailAddress)
             {
                 SMTPSetting smtpPassword = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPassword" };
                 SMTPSetting smtpPort = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPort" };
                 SMTPSetting smtpServer = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPServer" };
                 SMTPSetting smtpUser = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPUserName" };
                 SMTPSetting smtpEnvironment = new SMTPSetting { Section = "Relativity.Core", Name = "RelativityInstanceURL" };
+                SMTPSetting adminEmailSetting = new SMTPSetting { Section = "LTAS Billing Management", Name = "AdminEmailAddress" };                
 
-                List<SMTPSetting> smtpSettings = new List<SMTPSetting> { smtpPort, smtpServer, smtpUser, smtpPassword, smtpEnvironment };
+                List<SMTPSetting> smtpSettings = new List<SMTPSetting> { smtpPort, smtpServer, smtpUser, smtpPassword, smtpEnvironment, adminEmailSetting };
 
                 foreach (var smtpInstanceSettingSingle in smtpSettings)
                 {
@@ -541,11 +568,11 @@ namespace LTASBM.Agent.Handlers
                 };
 
                 emailMessage.To.Add(emailAddress.Contains("relativity.serviceaccount@kcura.com")
-                ? "damienyoung@quinnemanuel.com"
+                ? adminEmailAddress 
                 : emailAddress);
 
-                emailMessage.CC.Add("damienyoung@quinnemanuel.com");
-                emailMessage.ReplyToList.Add(new MailAddress("damienyoung@quinnemanuel.com", "Damien Young"));
+                emailMessage.CC.Add(adminEmailAddress);
+                emailMessage.ReplyToList.Add(new MailAddress(adminEmailAddress));
 
                 using (var smtpClient = new SmtpClient())
                 {
@@ -556,18 +583,19 @@ namespace LTASBM.Agent.Handlers
                     smtpClient.DeliveryFormat = SmtpDeliveryFormat.SevenBit;
                     smtpClient.UseDefaultCredentials = false;
                     smtpClient.Credentials = new NetworkCredential(smtpUserValue, smtpPasswordValue);
-                    smtpClient.Send(emailMessage);
+                    await smtpClient.SendMailAsync(emailMessage);
                 }
             }
-            public static void SendNewClientsReporting(IInstanceSettingsBundle instanceSettingsBundle, StringBuilder htmlBody, string emailAddress)
+            public static async Task SendNewClientsReportingAsync(IInstanceSettingsBundle instanceSettingsBundle, StringBuilder htmlBody)
             {
                 SMTPSetting smtpPassword = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPassword" };
                 SMTPSetting smtpPort = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPort" };
                 SMTPSetting smtpServer = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPServer" };
                 SMTPSetting smtpUser = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPUserName" };
                 SMTPSetting smtpEnvironment = new SMTPSetting { Section = "Relativity.Core", Name = "RelativityInstanceURL" };
-
-                List<SMTPSetting> smtpSettings = new List<SMTPSetting> { smtpPort, smtpServer, smtpUser, smtpPassword, smtpEnvironment };
+                SMTPSetting adminEmailSetting = new SMTPSetting { Section = "LTAS Billing Management", Name = "AdminEmailAddress" };
+                
+                List<SMTPSetting> smtpSettings = new List<SMTPSetting> { smtpPort, smtpServer, smtpUser, smtpPassword, smtpEnvironment, adminEmailSetting };
 
                 foreach (var smtpInstanceSettingSingle in smtpSettings)
                 {
@@ -588,8 +616,8 @@ namespace LTASBM.Agent.Handlers
                     Body = htmlBody.ToString(),
                     IsBodyHtml = true
                 };
-                emailMessage.To.Add(emailAddress);
-                emailMessage.ReplyToList.Add(new MailAddress("damienyoung@quinnemanuel.com", "Damien Young"));
+                emailMessage.To.Add(adminEmailAddress);
+                emailMessage.ReplyToList.Add(new MailAddress(adminEmailAddress));
 
                 using (var smtpClient = new SmtpClient())
                 {
@@ -600,18 +628,19 @@ namespace LTASBM.Agent.Handlers
                     smtpClient.DeliveryFormat = SmtpDeliveryFormat.SevenBit;
                     smtpClient.UseDefaultCredentials = false;
                     smtpClient.Credentials = new NetworkCredential(smtpUserValue, smtpPasswordValue);
-                    smtpClient.Send(emailMessage);
-                }
+                    await smtpClient.SendMailAsync(emailMessage);
+                }                
             }
-            public static void SentInvalidMatterNumber(IInstanceSettingsBundle instanceSettingsBundle, StringBuilder htmlBody, string emailAddress)
+            public static async Task SentInvalidMatterNumberAsync(IInstanceSettingsBundle instanceSettingsBundle, StringBuilder htmlBody, string emailAddress)
             {
                 SMTPSetting smtpPassword = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPassword" };
                 SMTPSetting smtpPort = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPort" };
                 SMTPSetting smtpServer = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPServer" };
                 SMTPSetting smtpUser = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPUserName" };
                 SMTPSetting smtpEnvironment = new SMTPSetting { Section = "Relativity.Core", Name = "RelativityInstanceURL" };
-
-                List<SMTPSetting> smtpSettings = new List<SMTPSetting> { smtpPort, smtpServer, smtpUser, smtpPassword, smtpEnvironment };
+                SMTPSetting adminEmailSetting = new SMTPSetting { Section = "LTAS Billing Management", Name = "AdminEmailAddress" };
+                
+                List<SMTPSetting> smtpSettings = new List<SMTPSetting> { smtpPort, smtpServer, smtpUser, smtpPassword, smtpEnvironment, adminEmailSetting };
 
                 foreach (var smtpInstanceSettingSingle in smtpSettings)
                 {
@@ -634,11 +663,11 @@ namespace LTASBM.Agent.Handlers
                 };
 
                 emailMessage.To.Add(emailAddress.Contains("relativity.serviceaccount@kcura.com")
-                ? "damienyoung@quinnemanuel.com"
+                ? adminEmailAddress
                 : emailAddress);
 
-                emailMessage.CC.Add("damienyoung@quinnemanuel.com");
-                emailMessage.ReplyToList.Add(new MailAddress("damienyoung@quinnemanuel.com", "Damien Young"));
+                emailMessage.CC.Add(adminEmailAddress);
+                emailMessage.ReplyToList.Add(new MailAddress(adminEmailAddress));
 
                 using (var smtpClient = new SmtpClient())
                 {
@@ -649,18 +678,19 @@ namespace LTASBM.Agent.Handlers
                     smtpClient.DeliveryFormat = SmtpDeliveryFormat.SevenBit;
                     smtpClient.UseDefaultCredentials = false;
                     smtpClient.Credentials = new NetworkCredential(smtpUserValue, smtpPasswordValue);
-                    smtpClient.Send(emailMessage);
+                    await smtpClient.SendMailAsync(emailMessage);
                 }
             }
-            public static void SendNewMattersReporting(IInstanceSettingsBundle instanceSettingsBundle, StringBuilder htmlBody)
+            public static async Task SendNewMattersReportingAsync(IInstanceSettingsBundle instanceSettingsBundle, StringBuilder htmlBody)
             {
                 SMTPSetting smtpPassword = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPassword" };
                 SMTPSetting smtpPort = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPort" };
                 SMTPSetting smtpServer = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPServer" };
                 SMTPSetting smtpUser = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPUserName" };
                 SMTPSetting smtpEnvironment = new SMTPSetting { Section = "Relativity.Core", Name = "RelativityInstanceURL" };
-
-                List<SMTPSetting> smtpSettings = new List<SMTPSetting> { smtpPort, smtpServer, smtpUser, smtpPassword, smtpEnvironment };
+                SMTPSetting adminEmailSetting = new SMTPSetting { Section = "LTAS Billing Management", Name = "AdminEmailAddress" };
+                SMTPSetting teamEmailSetting = new SMTPSetting { Section = "LTAS Billing Management", Name = "TeamEmailAddresses" };
+                List<SMTPSetting> smtpSettings = new List<SMTPSetting> { smtpPort, smtpServer, smtpUser, smtpPassword, smtpEnvironment, adminEmailSetting, teamEmailSetting };
 
                 foreach (var smtpInstanceSettingSingle in smtpSettings)
                 {
@@ -680,10 +710,20 @@ namespace LTASBM.Agent.Handlers
                     Subject = $"{smtpEnvironmentValue.Split('-')[1].Split('.')[0].ToUpper()} - New Matters To Be Created",
                     Body = htmlBody.ToString(),
                     IsBodyHtml = true
-                };                
-                emailMessage.To.Add("damienyoung@quinnemanuel.com");
-                emailMessage.To.Add("calaustin@quinnemanuel.com");
-                emailMessage.ReplyToList.Add(new MailAddress("damienyoung@quinnemanuel.com", "Damien Young"));
+                };
+
+                if (!string.IsNullOrWhiteSpace(teamEmailAddresses))
+                {
+                    var emails = teamEmailAddresses.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(email => email.Trim())
+                        .Where(email => !string.IsNullOrWhiteSpace(email));
+
+                    foreach (var email in emails)
+                    {
+                        emailMessage.To.Add(email);
+                    }
+                }
+                emailMessage.ReplyToList.Add(new MailAddress(adminEmailAddress));
 
                 using (var smtpClient = new SmtpClient())
                 {
@@ -694,18 +734,19 @@ namespace LTASBM.Agent.Handlers
                     smtpClient.DeliveryFormat = SmtpDeliveryFormat.SevenBit;
                     smtpClient.UseDefaultCredentials = false;
                     smtpClient.Credentials = new NetworkCredential(smtpUserValue, smtpPasswordValue);
-                    smtpClient.Send(emailMessage);
+                    await smtpClient.SendMailAsync(emailMessage);
                 }
             }
-            public static void SendDebugEmail(IInstanceSettingsBundle instanceSettingsBundle, StringBuilder htmlBody, string emailSubject)
+            public static async Task SendInternalNotificationAsync(IInstanceSettingsBundle instanceSettingsBundle, StringBuilder htmlBody, string emailSubject)
             {
                 SMTPSetting smtpPassword = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPassword" };
                 SMTPSetting smtpPort = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPort" };
                 SMTPSetting smtpServer = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPServer" };
                 SMTPSetting smtpUser = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPUserName" };
                 SMTPSetting smtpEnvironment = new SMTPSetting { Section = "Relativity.Core", Name = "RelativityInstanceURL" };
-
-                List<SMTPSetting> smtpSettings = new List<SMTPSetting> { smtpPort, smtpServer, smtpUser, smtpPassword, smtpEnvironment };
+                SMTPSetting adminEmailSetting = new SMTPSetting { Section = "LTAS Billing Management", Name = "AdminEmailAddress" };
+                
+                List<SMTPSetting> smtpSettings = new List<SMTPSetting> { smtpPort, smtpServer, smtpUser, smtpPassword, smtpEnvironment, adminEmailSetting };
 
                 foreach (var smtpInstanceSettingSingle in smtpSettings)
                 {
@@ -726,7 +767,8 @@ namespace LTASBM.Agent.Handlers
                     Body = htmlBody.ToString(),
                     IsBodyHtml = true
                 };
-                emailMessage.To.Add("damienyoung@quinnemanuel.com");
+                emailMessage.To.Add(adminEmailAddress);
+                emailMessage.ReplyToList.Add(new MailAddress(adminEmailAddress));
 
                 using (var smtpClient = new SmtpClient())
                 {
@@ -737,7 +779,7 @@ namespace LTASBM.Agent.Handlers
                     smtpClient.DeliveryFormat = SmtpDeliveryFormat.SevenBit;
                     smtpClient.UseDefaultCredentials = false;
                     smtpClient.Credentials = new NetworkCredential(smtpUserValue, smtpPasswordValue);
-                    smtpClient.Send(emailMessage);
+                    await smtpClient.SendMailAsync(emailMessage);
                 }
             }
         }

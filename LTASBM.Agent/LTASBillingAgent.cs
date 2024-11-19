@@ -3,10 +3,10 @@ using System;
 using System.Runtime.InteropServices;
 using Relativity.API;
 using LTASBM.Agent.Handlers;
-using LTASBM.Agent.Routines;
 using Relativity.Services.Objects;
 using System.Threading.Tasks;
-
+using LTASBM.Agent.Managers;
+using System.Data.SqlClient;
 
 namespace LTASBM.Agent
 {
@@ -20,89 +20,232 @@ namespace LTASBM.Agent
         public override void Execute()
         {
             IAPILog logger = Helper.GetLoggerFactory().GetLogger().ForContext<LTASBillingWorker>();
-            RaiseMessage("starting...", 10);
+            RaiseMessage("Starting LTAS Billing Management...", 10);
 
-            
             try
             {
                 var eddsDbContext = Helper.GetDBContext(-1);
                 var instanceSettingManager = Helper.GetInstanceSettingBundle();
                 var billingDatabaseId = instanceSettingManager.GetInt("LTAS Billing Management", "Management Database").Value;
                 var billingDbContext = Helper.GetDBContext(billingDatabaseId);
-                var jobId = 2;
                 using (var objectManager = Helper.GetServicesManager().CreateProxy<IObjectManager>(ExecutionIdentity.System))
-                {
+                {                    
                     var dataHandler = new DataHandler(eddsDbContext, billingDbContext);
-                    
-                    if (ShouldExecuteJob(eddsDbContext, jobId))
+
+                    int[] jobIds = { 1, 2, 3 };
+
+                    foreach (int jobId in jobIds)
                     {
-                        ProcessBillingJobsAsync(billingDatabaseId, objectManager, dataHandler, instanceSettingManager, logger).GetAwaiter().GetResult();                       
-                        UpdateJobExecutionTime(eddsDbContext, jobId);
-                    }
-                   
-                    
+                        try
+                        {
+                            RaiseMessage($"Checking job {jobId}...", 10);
+
+                            if (ShouldExecuteJob(eddsDbContext, jobId))
+                            {
+                                RaiseMessage($"Executing job {jobId}...", 10);
+                                switch (jobId)
+                                {
+                                    case 1: 
+                                         ProcessMonthlyReportingJobsAsync(
+                                            billingDatabaseId,
+                                            objectManager,
+                                            dataHandler,
+                                            instanceSettingManager,
+                                            logger)
+                                            .GetAwaiter()
+                                            .GetResult();
+                                        break;
+                                    case 2:
+                                        break;
+                                    case 3:
+                                        ProcessBillingHourlyJobsAsync(
+                                            billingDatabaseId,
+                                            objectManager,
+                                            dataHandler,
+                                            instanceSettingManager,
+                                            logger)
+                                            .GetAwaiter()
+                                            .GetResult();
+                                        break;                                                                                                   
+                                }
+                                UpdateJobExecutionTime(eddsDbContext, jobId);
+                                RaiseMessage($"Job {jobId} completed successfully", 10);
+                            }
+                        }
+                        catch (Exception jobEx)
+                        {
+                            // Log error but continue with other jobs
+                            var errorMessage = FormatErrorMessage(jobEx);
+                            logger.LogError(jobEx, "Error executing job {JobId}: {ErrorMessage}", jobId, errorMessage);
+                            RaiseMessage($"Error in job {jobId}: {errorMessage}", 1);
+                        }
+                    }                                        
                 }
             }
             catch (Exception ex)
             {
                 var errorMessage = FormatErrorMessage(ex);
-                logger.ForContext(typeof(ClientRoutine))
-                      .LogError($"Error Client Rountine: {errorMessage}");
+                logger.ForContext(typeof(LTASBillingWorker))
+                      .LogError(ex, "Critical error in agent execution: {ErrorMessage}", errorMessage);
+                RaiseMessage($"Critical error: {errorMessage}", 1);
                 throw;
             }
         }
 
-        private async Task ProcessBillingJobsAsync(int billingDatabaseId, IObjectManager objectManager, DataHandler dataHandler, IInstanceSettingsBundle instanceSettingManager, IAPILog logger)
+        private async Task ProcessBillingHourlyJobsAsync(
+            int billingDatabaseId,
+            IObjectManager objectManager,
+            DataHandler dataHandler,
+            IInstanceSettingsBundle instanceSettingManager,
+            IAPILog logger)
         {
-            var clientRoutine = new ClientRoutine(logger, Helper);
+            var clientManager = new ClientManager(
+                logger,
+                Helper,
+                objectManager,
+                dataHandler,
+                instanceSettingManager,
+                billingDatabaseId);
 
             await Task.Run(async () =>
             {
-                await clientRoutine.ProcessClientRoutines(
-                    billingDatabaseId,
-                    objectManager,
-                    dataHandler,
-                    instanceSettingManager);
+                await clientManager.ProcessClientRoutinesAsync();
             }).ConfigureAwait(false);
 
-            var matterRoutine = new MatterRoutine(logger, Helper);
+            var matterRoutine = new MatterManager(
+                logger,
+                Helper,
+                objectManager,
+                dataHandler,
+                instanceSettingManager,
+                billingDatabaseId);
 
             await Task.Run(async () =>
             {
-                await matterRoutine.ProcessMatterRoutines(
-                    billingDatabaseId,
-                    objectManager,
-                    dataHandler,
-                    instanceSettingManager);
+                await matterRoutine.ProcessMatterRoutinesAsync();
             }).ConfigureAwait(false);
 
-            var workspaceRoutine = new WorkspaceRoutine(logger, Helper);
+            var workspaceRoutine = new WorkspaceManager(
+                logger,
+                Helper,
+                objectManager,
+                dataHandler,
+                instanceSettingManager,
+                billingDatabaseId);
 
             await Task.Run(async () =>
             {
-                  await workspaceRoutine.ProcessWorkspaceRoutines(
-                      billingDatabaseId, 
-                      objectManager, 
-                      dataHandler, 
-                      instanceSettingManager);
+                await workspaceRoutine.ProcessWorkspaceRoutinesAsync();
             }).ConfigureAwait(false);
-        }        
 
+            var DataSyncRoutine = new DataSyncManager(
+                logger,
+                Helper,
+                objectManager,
+                instanceSettingManager,
+                dataHandler,
+                billingDatabaseId);
+
+            await Task.Run(async () =>
+            {
+                await DataSyncRoutine.ProcessDataSyncRoutinesAsync();
+            }).ConfigureAwait(false);
+        }
+
+        private async Task ProcessMonthlyReportingJobsAsync(
+            int billingDatabaseId,
+            IObjectManager objectManager,
+            DataHandler dataHandler,
+            IInstanceSettingsBundle instanceSettingManager,
+            IAPILog logger)
+        {
+            var workspaceRoutine = new WorkspaceManager(
+                logger,
+                Helper,
+                objectManager,
+                dataHandler,
+                instanceSettingManager,
+                billingDatabaseId);
+
+            await Task.Run(async () =>
+            {
+                await workspaceRoutine.ProcessMonthlyReportingJobs();
+            }).ConfigureAwait(false);
+        }
         private bool ShouldExecuteJob(IDBContext eddsDbContext, int jobId)
         {
-            int intervalHours = (int)eddsDbContext.ExecuteSqlStatementAsScalar(
-                $"SELECT JobExecute_Interval FROM EDDS.QE.AutomationControl WHERE JobId = {jobId};");
+            string jobSQL = @"
+                        SELECT 
+                            JobExecute_Time_Day,
+                            JobExecute_Time_Hour,
+                            JobExecute_Interval,
+                            JobLastExecute_DateTime,
+                            JobLastCheck_DateTime
+                        FROM EDDS.QE.AutomationControl 
+                        WHERE JobId = @jobId";
 
-            DateTime lastExecuteTime = (DateTime)eddsDbContext.ExecuteSqlStatementAsScalar(
-                $"SELECT JobLastExecute_DateTime FROM EDDS.QE.AutomationControl WHERE JobId = {jobId};");
+            var jobInfo = eddsDbContext.ExecuteSqlStatementAsDataTable(
+                jobSQL,
+                new[] { new SqlParameter("@jobId", jobId)}).Rows[0];
 
-            return DateTime.Now >= lastExecuteTime.AddHours(intervalHours);
+            eddsDbContext.ExecuteNonQuerySQLStatement(@"
+                UPDATE qac 
+                SET qac.JobLastCheck_DateTime = GETDATE()
+                FROM EDDS.QE.AutomationControl qac 
+                WHERE qac.JobId = @jobId",
+                new[] { new SqlParameter("@jobId", jobId) });
+
+            var now = DateTime.Now;
+            int executeDay = 0;
+            int executeHour = 0;
+            bool hasExecuteDay = false;
+            bool hasExecuteHour = false;
+
+            if (jobInfo["JobExecute_Time_Day"] != DBNull.Value)
+            {
+                executeDay = Convert.ToInt32(jobInfo["JobExecute_Time_Day"]);
+                hasExecuteDay = true;
+            }
+
+            if (jobInfo["JobExecute_Time_Hour"] != DBNull.Value)
+            {
+                executeHour = Convert.ToInt32(jobInfo["JobExecute_Time_Hour"]);
+                hasExecuteHour = true;
+            }
+
+            int intervalHours = Convert.ToInt32(jobInfo["JobExecute_Interval"]);
+            DateTime lastExecuteTime = jobInfo["JobLastExecute_DateTime"] != DBNull.Value
+                ? Convert.ToDateTime(jobInfo["JobLastExecute_DateTime"])
+                : DateTime.MinValue;
+
+            //Monthly Job (interval = 720)
+            if (intervalHours == 720)
+            {
+                if (!hasExecuteDay || !hasExecuteHour) return false;
+
+                return now.Day == executeDay &&
+                       now.Hour == executeHour &&
+                       (lastExecuteTime.Month != now.Month || lastExecuteTime.Year != now.Year);
+            }
+            // Daily Job (interval = 24)
+            if (intervalHours == 24)
+            {
+                if (!hasExecuteHour) return false;
+
+                return now.Hour == executeHour &&
+                       lastExecuteTime.Date < now.Date;
+            }
+
+            // Hourly Job (interval = 1)
+            return now >= lastExecuteTime.AddHours(intervalHours);
         }
         private void UpdateJobExecutionTime(IDBContext eddsDbContext, int jobId)
         {
             eddsDbContext.ExecuteNonQuerySQLStatement(
-                             "UPDATE qac SET  qac.[JobLastExecute_DateTime] = GETDATE() " +
-                            $"FROM EDDS.QE.AutomationControl qac WHERE qac.JobId = {jobId};");
+                    @"UPDATE qac 
+                        SET  qac.[JobLastExecute_DateTime] = GETDATE()
+                        FROM EDDS.QE.AutomationControl qac 
+                        WHERE qac.JobId = @jobId", new[] { new SqlParameter("@jobId", jobId) });
         }
         private string FormatErrorMessage(Exception ex)
         {
