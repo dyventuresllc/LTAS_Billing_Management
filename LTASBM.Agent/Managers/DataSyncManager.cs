@@ -105,6 +105,9 @@ namespace LTASBM.Agent.Managers
 
             var workspaceAnalystUpdates = GetWorkspaceAnalystUpdates(eddsWorkspaces, billingWorkspaces);
             await NotifyWorkspaceAnalystUpdatesAsync(workspaceAnalystUpdates);
+
+            var workspaceStatusUpdates = await GetWorkspaceStatusUpdates(eddsWorkspaces, billingWorkspaces);            
+            await NotifyWorkspaceStatusUpdateAsync(workspaceStatusUpdates);
         }
 
         private IEnumerable<(int BillingClientArtifactId, string EddsClientName)> GetClientNameUpdates(
@@ -314,6 +317,7 @@ namespace LTASBM.Agent.Managers
                     {
                         billing.BillingWorkspaceArtifactId,
                         billing.BillingStatusName,
+                        billing.BillingWorkspaceName,
                         edds.EddsWorkspaceStatusName
                     })
                 .Where(result => result.BillingStatusName != result.EddsWorkspaceStatusName)
@@ -650,17 +654,31 @@ namespace LTASBM.Agent.Managers
             }
         }
 
-        private async Task UpdateWorkspaceStatusesAsync(IEnumerable<(int BillingWorkspaceArtifactId, int NewStatusChoiceArtifactId)> statusUpdates)
+        private async Task NotifyWorkspaceStatusUpdateAsync(IEnumerable<(int BillingWorkspaceArtifactId, int NewStatusChoiceArtifactId)> statusUpdates)
         {
             try
             {
                 if (!statusUpdates.Any()) return;
 
                 var emailBody = new StringBuilder();
-                MessageHandler.DataSyncNotificationEmailBody(emailBody,
-                    statusUpdates.Select(s => (s.BillingWorkspaceArtifactId, s.NewStatusChoiceArtifactId.ToString())),
-                    "Workspace",
-                    "Case Status");
+
+                emailBody.AppendLine("The following workspaces require status updates:");
+                emailBody.AppendLine("<table border='1' style='border-collapse: collapse;'>");
+                emailBody.AppendLine("<tr style='background-color: #f2f2f2;'>");
+                emailBody.AppendLine("<th style='padding: 8px;'>Workspace ArtifactID</th>");
+                emailBody.AppendLine("<th style='padding: 8px;'>Current Status</th>");
+                emailBody.AppendLine("<th style='padding: 8px;'>New Status</th>");
+                emailBody.AppendLine("</tr>");
+
+                foreach (var (workspaceId, newStatusId) in statusUpdates)
+                {
+                    emailBody.AppendLine("<tr>");
+                    emailBody.AppendLine($"<td style='padding: 8px;'>{workspaceId}</td>");
+                    emailBody.AppendLine($"<td style='padding: 8px;'>{newStatusId}</td>");
+                    emailBody.AppendLine("</tr>");
+                }
+
+                emailBody.AppendLine("</table>");
 
                 await MessageHandler.Email.SendInternalNotificationAsync(_instanceSettings, emailBody, "Workspace Status Updates");
 

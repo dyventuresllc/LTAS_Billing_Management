@@ -52,6 +52,12 @@ namespace LTASBM.Agent.Managers
             var eddsWorkspaces = _dataHandler.EddsWorkspaces();
             await HandleProcessingOnlyAgeCheckAsync(eddsWorkspaces);
         }
+
+        public async Task ProcessDailyOperationsAsnyc()
+        {
+            var eddsWorkspaces = _dataHandler.EddsWorkspaces();
+            await NotifyMissingTeamInfoAsync(eddsWorkspaces);
+        }
         private async Task ProcessAllWorkspaceOperationsAsync(List<EddsWorkspaces> eddsWorkspaces, List<BillingWorkspaces> billingWorkspaces)
         {
             var invalidWorkspaces = GetInvalidWorkspaces(billingWorkspaces);
@@ -62,12 +68,10 @@ namespace LTASBM.Agent.Managers
 
             var NewWorkspaces = GetNewWorkspacesForBilling(eddsWorkspaces, billingWorkspaces);
             await ProcessNewWorkspacesAsync(NewWorkspaces);
-
-            await NotifyMissingTeamInfoAsync(eddsWorkspaces);
-
+            
             await HandleOrphanedWorkspacesAsync(eddsWorkspaces, billingWorkspaces);
 
-            await HandleProcessingOnlyMismatchAsync(eddsWorkspaces);
+            await HandleProcessingOnlyMismatchAsync(eddsWorkspaces);            
         }
         private IEnumerable<EddsWorkspaces> GetNewWorkspacesForBilling(List<EddsWorkspaces> eddsWorkspaces, List<BillingWorkspaces> billingWorkspaces)
         {
@@ -95,7 +99,7 @@ namespace LTASBM.Agent.Managers
             .Where(w =>
             (string.IsNullOrWhiteSpace(w.EddsWorkspaceAnalyst) ||
             string.IsNullOrWhiteSpace(w.EddsWorkspaceCaseTeam)) &&
-            !new[] { "Template", "Processing Only", "Internal" }
+            !new[] { "Template" }
                 .Contains(w.EddsWorkspaceStatusName, StringComparer.OrdinalIgnoreCase))
             .ToList();
         private IEnumerable<BillingWorkspaces> GetOrphanedWorkspaces(
@@ -112,11 +116,18 @@ namespace LTASBM.Agent.Managers
             w.EddsWorkspaceStatusName.Equals("Processing Only", StringComparison.OrdinalIgnoreCase))
             .ToList();
         private IEnumerable<EddsWorkspaces> GetProcessingOnlyNameMismatch(List<EddsWorkspaces> eddsWorkspaces)
-            => eddsWorkspaces
-            .Where(w =>
-            w.EddsWorkspaceName.IndexOf("PO", StringComparison.OrdinalIgnoreCase) >= 0 &&
-            !w.EddsWorkspaceStatusName.Equals("Processing Only", StringComparison.OrdinalIgnoreCase))
-            .ToList();
+        {
+            var nonQEInternalWorkspaces = eddsWorkspaces
+                .Where(w => w.EddsMatterName.IndexOf("QE INTERNAL", StringComparison.OrdinalIgnoreCase) == -1);
+
+            var poWorkspaces = nonQEInternalWorkspaces
+                .Where(w =>
+                    w.EddsWorkspaceName.IndexOf("PO", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                    !w.EddsWorkspaceStatusName.Equals("Processing Only", StringComparison.OrdinalIgnoreCase));
+
+            return poWorkspaces.ToList();
+        }
+      
         private async Task NotifyInvalidWorkspacesAsync(IEnumerable<BillingWorkspaces> invalidWorkspaces) 
         {
             if (invalidWorkspaces.Any())
@@ -235,7 +246,7 @@ namespace LTASBM.Agent.Managers
             try
             {
                 var orphanedWorkspaces = GetOrphanedWorkspaces(eddsWorkspaces, billingWorkspaces);
-
+                
                 if (!orphanedWorkspaces.Any()) return;
 
                 var emailBody = new StringBuilder();
@@ -265,7 +276,43 @@ namespace LTASBM.Agent.Managers
                     emailBody,
                     "Orphaned Workspaces Status Update");
 
-                // Rest of your code for updating status remains the same...
+                foreach (var workspace in orphanedWorkspaces)
+                {
+                    try 
+                    {
+                        var deletedStatusArtifactId = _ltasHelper.GetCaseStatusArtifactID(
+                            _ltasHelper.Helper.GetDBContext(_billingManagementDatabase),
+                            "Deleted");
+
+                        if (deletedStatusArtifactId != 0)
+                        {
+                            await ObjectHandler.UpdateFieldValueAsync(
+                                _objectManager,
+                                _billingManagementDatabase,
+                                workspace.BillingWorkspaceArtifactId,
+                                _ltasHelper.WorkspaceStatusField,
+                                new Relativity.Services.Objects.DataContracts.ChoiceRef
+                                {
+                                    ArtifactID = deletedStatusArtifactId
+                                },
+                                true,
+                                _ltasHelper.Logger);
+                        }
+                        else
+                        {
+                            _ltasHelper.Logger.LogError(
+                                "Could not find 'Deleted' status choice artifact ID for workspace {WorkspaceId}",
+                                workspace.BillingWorkspaceArtifactId);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _ltasHelper.Logger.LogError(ex,
+                            "Error updating status to Deleted for workspace {WorkspaceDetails}",
+                            new { workspace.BillingWorkspaceArtifactId, workspace.BillingWorkspaceName });
+                    }
+                }
+
             }
             catch (Exception ex)
             {
@@ -314,48 +361,68 @@ namespace LTASBM.Agent.Managers
                 _ltasHelper.Logger.LogError(ex, "Error handling Processing Only name/status mismatch check");
                 throw;
             }
-        }  
+        }
         private async Task HandleProcessingOnlyAgeCheckAsync(List<EddsWorkspaces> eddsWorkspaces)
         {
             try
             {
-                var processingOnlyWorkspaces = GetProcessingOnlyWorkspaces(eddsWorkspaces);
+                var processingOnlyWorkspaces = GetProcessingOnlyWorkspaces(eddsWorkspaces)
+                    .OrderByDescending(w => (DateTime.Now - w.EddsWorkspaceCreatedOn).Days);
 
                 if (!processingOnlyWorkspaces.Any()) return;
 
                 var emailBody = new StringBuilder();
+                
+                // Add distinct creators list at top
+                var creators = processingOnlyWorkspaces
+                    .Select(w => w.EddsWorkspaceCreatedBy)
+                    .Distinct()
+                    .OrderBy(name => name);
+                emailBody.AppendLine("Workspace Creators: " + string.Join("; ", creators));
+                emailBody.AppendLine("<br>---------------<br>");
+
+
                 emailBody.AppendLine("Processing Only Workspace Age Report:");
-                emailBody.AppendLine();
+                emailBody.AppendLine("<br><br>");
                 emailBody.AppendLine("<table border='1' style='border-collapse: collapse;'>");
                 emailBody.AppendLine("<tr style='background-color: #f2f2f2;'>");
                 emailBody.AppendLine("<th style='padding: 8px;'>Workspace Name</th>");
+                emailBody.AppendLine("<th style='padding: 8px;'>Workspace ArtifactID</th>");
                 emailBody.AppendLine("<th style='padding: 8px;'>Status</th>");
                 emailBody.AppendLine("<th style='padding: 8px;'>Created By</th>");
                 emailBody.AppendLine("<th style='padding: 8px;'>Created On</th>");
                 emailBody.AppendLine("<th style='padding: 8px;'>Age (Days)</th>");
                 emailBody.AppendLine("<th style='padding: 8px;'>Age (Months)</th>");
-                emailBody.AppendLine("<th style='padding: 8px;'>Link</th>");
                 emailBody.AppendLine("</tr>");
 
                 foreach (var workspace in processingOnlyWorkspaces)
                 {
                     var ageInDays = (DateTime.Now - workspace.EddsWorkspaceCreatedOn).Days;
                     var ageInMonths = ageInDays / 30.44; // Average days in a month
-                    var isOld = ageInMonths > 10;
+
+                    string colorStyle = "";
+                    if (ageInMonths > 10)
+                        colorStyle = " color: red;";
+                    else if (ageInMonths > 8)
+                        colorStyle = " color: #FFD700;"; // Yellow
 
                     emailBody.AppendLine("<tr>");
-                    emailBody.AppendLine($"<td style='padding: 8px;{(isOld ? " font-weight: bold;" : "")}'>{workspace.EddsWorkspaceName}</td>");
+                    emailBody.AppendLine($"<td style='padding: 8px;{(ageInMonths > 10 ? " font-weight: bold;" : "")}'>{workspace.EddsWorkspaceName}</td>");
+                    emailBody.AppendLine($"<td style='padding: 8px;'>{workspace.EddsWorkspaceArtifactId}</td>");
                     emailBody.AppendLine($"<td style='padding: 8px;'>{workspace.EddsWorkspaceStatusName}</td>");
                     emailBody.AppendLine($"<td style='padding: 8px;'>{workspace.EddsWorkspaceCreatedBy}</td>");
                     emailBody.AppendLine($"<td style='padding: 8px;'>{workspace.EddsWorkspaceCreatedOn:yyyy-MM-dd HH:mm}</td>");
-                    emailBody.AppendLine($"<td style='padding: 8px;{(isOld ? " color: red;" : "")}'>{ageInDays:N0}</td>");
-                    emailBody.AppendLine($"<td style='padding: 8px;{(isOld ? " color: red;" : "")}'>{ageInMonths:N1}</td>");
-                    emailBody.AppendLine($"<td style='padding: 8px;'><a href=\"https://qe-us.relativity.one/Relativity/RelativityInternal.aspx?AppID=-1&ArtifactTypeID=8&ArtifactID={workspace.EddsWorkspaceArtifactId}&Mode=Forms&FormMode=view&LayoutID=null&SelectedTab=null\">View</a></td>");
+                    emailBody.AppendLine($"<td style='padding: 8px;{colorStyle}'>{ageInDays:N0}</td>");
+                    emailBody.AppendLine($"<td style='padding: 8px;{colorStyle}'>{ageInMonths:N1}</td>");
                     emailBody.AppendLine("</tr>");
                 }
 
                 emailBody.AppendLine("</table>");
-                emailBody.AppendLine("<p><small>* Workspaces older than 10 months are highlighted in red</small></p>");
+                emailBody.AppendLine("<p><small>* Age indicators:</small></p>");
+                emailBody.AppendLine("<ul>");                
+                emailBody.AppendLine($"<li><small style='color: #FFD700;'>Yellow: 8-10 months</small></li>");
+                emailBody.AppendLine($"<li><small style='color: red;'>Red: Over 10 months</small></li>");
+                emailBody.AppendLine("</ul>");
 
                 await MessageHandler.Email.SendInternalNotificationAsync(
                     _instanceSettings,

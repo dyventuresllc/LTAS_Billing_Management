@@ -24,7 +24,7 @@ namespace LTASBM.Agent.Handlers
                            FROM EDDS.eddsdbo.ExtendedClient ec
                            JOIN EDDS.eddsdbo.[User] u WITH (NOLOCK)
                                 ON u.ArtifactID = ec.CreatedBy
-                           WHERE  ec.[Number] NOT IN ('Relativity','Relativity Template','Vendor','Review Vendor','Co-Counsel','Software','QE Template','QE')";
+                           WHERE  ec.[Number] NOT IN ('Relativity','Relativity Template','Vendor','Review Vendor','Co-Counsel','Software','QE Template')";
             var dt = EddsDbContext.ExecuteSqlStatementAsDataTable(sql);
 
             foreach (DataRow row in dt.Rows)
@@ -68,7 +68,7 @@ namespace LTASBM.Agent.Handlers
                            FROM EDDS.eddsdbo.ExtendedMatter em  
                            JOIN EDDS.eddsdbo.[User] u WItH (NOLOCK)
                                 ON u.ArtifactID = em.CreatedBy
-                           WHERE em.Number NOT IN ('Relativity Template', 'Billing','QE Internal','Relativity', 'QE Template')";
+                           WHERE em.Number NOT IN ('Relativity Template', 'Billing','Relativity', 'QE Template')";
             var dt = EddsDbContext.ExecuteSqlStatementAsDataTable(sql);
 
             foreach (DataRow row in dt.Rows)
@@ -115,9 +115,9 @@ namespace LTASBM.Agent.Handlers
                             JOIN EDDS.eddsdbo.[User] u WITH (NOLOCK)
                                 ON u.ArtifactID = ec.CreatedBy
                             WHERE ec.ClientName NOT IN('Relativity Template','Quinn Emanuel Template')
-	                        AND ec.MatterNumber NOT IN('Relativity')
-	                        AND ec.MatterName NOT IN('Quinn Internal')
-	                        AND ec.StatusName NOT IN('Processing Only')";
+	                        AND ec.MatterNumber NOT IN('Relativity')";
+	                        //AND ec.MatterName NOT IN('Quinn Internal')
+	                        //AND ec.StatusName NOT IN('Processing Only')";
 
             var dt = EddsDbContext.ExecuteSqlStatementAsDataTable(sql);
 
@@ -133,7 +133,8 @@ namespace LTASBM.Agent.Handlers
                     EddsWorkspaceClientArtifactId = row.Field<int>("ClientArtifactID"),
                     EddsWorkspaceAnalyst = row["Notes"]?.ToString(),
                     EddsWorkspaceCaseTeam = row["Keywords"]?.ToString(),
-                    EddsWorkspaceStatusName = row["StatusName"]?.ToString()
+                    EddsWorkspaceStatusName = row["StatusName"]?.ToString(),
+                    EddsMatterName = row["MatterName"]?.ToString()
                 });
             }
             return workspaces;

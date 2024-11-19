@@ -7,6 +7,7 @@ using Relativity.Services.Objects;
 using System.Threading.Tasks;
 using LTASBM.Agent.Managers;
 using System.Data.SqlClient;
+using kCura.Vendor.Castle.Core.Logging;
 
 namespace LTASBM.Agent
 {
@@ -29,7 +30,7 @@ namespace LTASBM.Agent
                 var billingDatabaseId = instanceSettingManager.GetInt("LTAS Billing Management", "Management Database").Value;
                 var billingDbContext = Helper.GetDBContext(billingDatabaseId);
                 using (var objectManager = Helper.GetServicesManager().CreateProxy<IObjectManager>(ExecutionIdentity.System))
-                {                    
+                {
                     var dataHandler = new DataHandler(eddsDbContext, billingDbContext);
 
                     int[] jobIds = { 1, 2, 3 };
@@ -45,8 +46,18 @@ namespace LTASBM.Agent
                                 RaiseMessage($"Executing job {jobId}...", 10);
                                 switch (jobId)
                                 {
-                                    case 1: 
-                                         ProcessMonthlyReportingJobsAsync(
+                                    case 1:
+                                        ProcessMonthlyReportingJobsAsync(
+                                           billingDatabaseId,
+                                           objectManager,
+                                           dataHandler,
+                                           instanceSettingManager,
+                                           logger)
+                                           .GetAwaiter()
+                                           .GetResult();
+                                        break;
+                                    case 2:
+                                        ProcessDailyOperationsAsync(
                                             billingDatabaseId,
                                             objectManager,
                                             dataHandler,
@@ -54,8 +65,6 @@ namespace LTASBM.Agent
                                             logger)
                                             .GetAwaiter()
                                             .GetResult();
-                                        break;
-                                    case 2:
                                         break;
                                     case 3:
                                         ProcessBillingHourlyJobsAsync(
@@ -66,7 +75,7 @@ namespace LTASBM.Agent
                                             logger)
                                             .GetAwaiter()
                                             .GetResult();
-                                        break;                                                                                                   
+                                        break;
                                 }
                                 UpdateJobExecutionTime(eddsDbContext, jobId);
                                 RaiseMessage($"Job {jobId} completed successfully", 10);
@@ -79,7 +88,7 @@ namespace LTASBM.Agent
                             logger.LogError(jobEx, "Error executing job {JobId}: {ErrorMessage}", jobId, errorMessage);
                             RaiseMessage($"Error in job {jobId}: {errorMessage}", 1);
                         }
-                    }                                        
+                    }
                 }
             }
             catch (Exception ex)
@@ -172,6 +181,28 @@ namespace LTASBM.Agent
                 await workspaceRoutine.ProcessMonthlyReportingJobs();
             }).ConfigureAwait(false);
         }
+
+        private async Task ProcessDailyOperationsAsync(
+            int billingDatabaseId,
+            IObjectManager objectManager,
+            DataHandler dataHandler,
+            IInstanceSettingsBundle instanceSettingManager,
+            IAPILog logger)        
+        {
+            var workspaceRoutine = new WorkspaceManager(
+               logger,
+               Helper,
+               objectManager,
+               dataHandler,
+               instanceSettingManager,
+               billingDatabaseId);
+
+            await Task.Run(async () =>
+            {
+                await workspaceRoutine.ProcessDailyOperationsAsnyc();
+            }).ConfigureAwait(false);
+        }
+
         private bool ShouldExecuteJob(IDBContext eddsDbContext, int jobId)
         {
             string jobSQL = @"
@@ -223,21 +254,47 @@ namespace LTASBM.Agent
             {
                 if (!hasExecuteDay || !hasExecuteHour) return false;
 
-                return now.Day == executeDay &&
-                       now.Hour == executeHour &&
-                       (lastExecuteTime.Month != now.Month || lastExecuteTime.Year != now.Year);
+                bool notRunThisMonth = lastExecuteTime.Month != now.Month || lastExecuteTime.Year != now.Year;
+                bool isMonday = now.DayOfWeek == DayOfWeek.Monday;
+
+                if (now.Day == executeDay)
+                {
+                    // On the exact day, run at the specified hour
+                    return now.Hour >= executeHour && notRunThisMonth;
+                }
+                else if (now.Day > executeDay)
+                {
+                    // After the specified day, run if we haven't run this month
+                    return notRunThisMonth && isMonday;
+                }
+
+                return false;
             }
             // Daily Job (interval = 24)
             if (intervalHours == 24)
             {
-                if (!hasExecuteHour) return false;
+                if (!hasExecuteHour)
+                {                 
+                    return false;
+                }
 
-                return now.Hour == executeHour &&
-                       lastExecuteTime.Date < now.Date;
+                var notRunToday = lastExecuteTime.Date < now.Date;
+                var isAfterExecutionHour = now.Hour >= executeHour;
+                var shouldRun = notRunToday && isAfterExecutionHour;
+
+                return shouldRun;
             }
 
             // Hourly Job (interval = 1)
-            return now >= lastExecuteTime.AddHours(intervalHours);
+
+            if (intervalHours == 1)
+            {
+                var shouldRun = now >= lastExecuteTime.AddHours(intervalHours);
+                RaiseMessage($"Hourly Job {jobId} Status - LastRun: {lastExecuteTime}, ShouldRun: {shouldRun}", 10);                
+                return shouldRun;
+            }
+
+            return false;
         }
         private void UpdateJobExecutionTime(IDBContext eddsDbContext, int jobId)
         {

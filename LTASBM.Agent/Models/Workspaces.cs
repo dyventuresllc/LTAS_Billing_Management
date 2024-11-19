@@ -13,6 +13,7 @@ namespace LTASBM.Agent.Models
         public string EddsWorkspaceAnalyst { get; set; } = null;
         public string EddsWorkspaceCaseTeam { get; set; } = null;
         public string EddsWorkspaceStatusName { get; set; }
+        public string EddsMatterName { get; set; }  
     }
 
     public class BillingWorkspaces

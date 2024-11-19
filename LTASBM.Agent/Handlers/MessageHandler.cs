@@ -567,9 +567,11 @@ namespace LTASBM.Agent.Handlers
                     IsBodyHtml = true
                 };
 
-                emailMessage.To.Add(emailAddress.Contains("relativity.serviceaccount@kcura.com")
-                ? adminEmailAddress 
-                : emailAddress);
+                emailMessage.To.Add(
+                   emailAddress.IndexOf("kcura.com", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   emailAddress.IndexOf("relativity.com", StringComparison.OrdinalIgnoreCase) >= 0
+                       ? adminEmailAddress
+                       : emailAddress);
 
                 emailMessage.CC.Add(adminEmailAddress);
                 emailMessage.ReplyToList.Add(new MailAddress(adminEmailAddress));
@@ -712,17 +714,18 @@ namespace LTASBM.Agent.Handlers
                     IsBodyHtml = true
                 };
 
-                if (!string.IsNullOrWhiteSpace(teamEmailAddresses))
-                {
-                    var emails = teamEmailAddresses.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
-                        .Select(email => email.Trim())
-                        .Where(email => !string.IsNullOrWhiteSpace(email));
+                //if (!string.IsNullOrWhiteSpace(teamEmailAddresses))
+                //{
+                //    var emails = teamEmailAddresses.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+                //        .Select(email => email.Trim())
+                //        .Where(email => !string.IsNullOrWhiteSpace(email));
 
-                    foreach (var email in emails)
-                    {
-                        emailMessage.To.Add(email);
-                    }
-                }
+                //    foreach (var email in emails)
+                //    {
+                //        emailMessage.To.Add(email);
+                //    }
+                //}
+                emailMessage.To.Add("damienyoung@quinnemanuel.com");
                 emailMessage.ReplyToList.Add(new MailAddress(adminEmailAddress));
 
                 using (var smtpClient = new SmtpClient())
