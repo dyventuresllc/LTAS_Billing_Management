@@ -93,7 +93,6 @@ namespace LTASBM.Agent.Managers
                 MessageHandler.DuplicateMattersEmailBody(emailBody, duplicateMatters.ToList());
                 await MessageHandler.Email.SendInternalNotificationAsync(_instanceSettings, emailBody, "Duplicate Matters Found");
             }
-
         }
         private async Task ProcessNewMattesAsync(IEnumerable<EddsMatters> newMatters)
         {

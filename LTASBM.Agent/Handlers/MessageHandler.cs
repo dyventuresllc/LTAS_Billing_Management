@@ -714,18 +714,18 @@ namespace LTASBM.Agent.Handlers
                     IsBodyHtml = true
                 };
 
-                //if (!string.IsNullOrWhiteSpace(teamEmailAddresses))
-                //{
-                //    var emails = teamEmailAddresses.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
-                //        .Select(email => email.Trim())
-                //        .Where(email => !string.IsNullOrWhiteSpace(email));
+                if (!string.IsNullOrWhiteSpace(teamEmailAddresses))
+                {
+                    var emails = teamEmailAddresses.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(email => email.Trim())
+                        .Where(email => !string.IsNullOrWhiteSpace(email));
 
-                //    foreach (var email in emails)
-                //    {
-                //        emailMessage.To.Add(email);
-                //    }
-                //}
-                emailMessage.To.Add("damienyoung@quinnemanuel.com");
+                    foreach (var email in emails)
+                    {
+                        emailMessage.To.Add(email);
+                    }
+                }
+
                 emailMessage.ReplyToList.Add(new MailAddress(adminEmailAddress));
 
                 using (var smtpClient = new SmtpClient())

@@ -304,7 +304,7 @@ namespace LTASBM.Agent.Managers
             .Select(result => (result.BillingWorkspaceArtifactId, result.EddsWorkspaceAnalyst))
             .ToList();
 
-        private async Task<IEnumerable<(int BillingWorkspaceArtifactId, int NewStatusChoiceArtifactId)>> GetWorkspaceStatusUpdates(
+        private async Task<IEnumerable<(int BillingWorkspaceArtifactId, string CurrentStatus, string NewStatus, int NewStatusChoiceArtifactId)>> GetWorkspaceStatusUpdates(
             List<EddsWorkspaces> eddsWorkspaces,
             List<BillingWorkspaces> billingWorkspaces)
         {
@@ -316,38 +316,38 @@ namespace LTASBM.Agent.Managers
                     (billing, edds) => new
                     {
                         billing.BillingWorkspaceArtifactId,
-                        billing.BillingStatusName,
-                        billing.BillingWorkspaceName,
-                        edds.EddsWorkspaceStatusName
+                        CurrentStatus = billing.BillingStatusName,
+                        NewStatus = edds.EddsWorkspaceStatusName
                     })
-                .Where(result => result.BillingStatusName != result.EddsWorkspaceStatusName)
+                .Where(result => result.CurrentStatus != result.NewStatus)
                 .ToList();
 
-            var updates = new List<(int, int)>();
-
+            var updates = new List<(int, string, string, int)>();
             foreach (var status in statusUpdates)
             {
-                // Look up the choice artifact ID for the new status
                 var choiceArtifactId = _ltasHelper.GetCaseStatusArtifactID(
                     _ltasHelper.Helper.GetDBContext(_billingManagementDatabase),
-                    status.EddsWorkspaceStatusName);
+                    status.NewStatus);
 
-                if (choiceArtifactId != 0)  // Only add if we got a valid choice ID
+                if (choiceArtifactId != 0)
                 {
-                    updates.Add((status.BillingWorkspaceArtifactId, choiceArtifactId));
+                    updates.Add((
+                        status.BillingWorkspaceArtifactId,
+                        status.CurrentStatus,
+                        status.NewStatus,
+                        choiceArtifactId));
                 }
                 else
                 {
                     _ltasHelper.Logger.LogError(
                         "Could not find choice artifact ID for status {StatusName} on workspace {WorkspaceId}",
-                        status.EddsWorkspaceStatusName,
+                        status.NewStatus,
                         status.BillingWorkspaceArtifactId);
                 }
             }
 
             return updates;
         }
-
 
         private async Task NotifyClientNameUpdatesAsync(IEnumerable<(int BillingClientArtifactId, string EddsClientName)> clientNameUpdates)
         {
@@ -654,15 +654,16 @@ namespace LTASBM.Agent.Managers
             }
         }
 
-        private async Task NotifyWorkspaceStatusUpdateAsync(IEnumerable<(int BillingWorkspaceArtifactId, int NewStatusChoiceArtifactId)> statusUpdates)
+        private async Task NotifyWorkspaceStatusUpdateAsync(
+            IEnumerable<(int BillingWorkspaceArtifactId, string CurrentStatus, string NewStatus, int NewStatusChoiceArtifactId)> statusUpdates)
         {
             try
             {
                 if (!statusUpdates.Any()) return;
 
                 var emailBody = new StringBuilder();
-
                 emailBody.AppendLine("The following workspaces require status updates:");
+                emailBody.AppendLine("<br><br>");
                 emailBody.AppendLine("<table border='1' style='border-collapse: collapse;'>");
                 emailBody.AppendLine("<tr style='background-color: #f2f2f2;'>");
                 emailBody.AppendLine("<th style='padding: 8px;'>Workspace ArtifactID</th>");
@@ -670,19 +671,22 @@ namespace LTASBM.Agent.Managers
                 emailBody.AppendLine("<th style='padding: 8px;'>New Status</th>");
                 emailBody.AppendLine("</tr>");
 
-                foreach (var (workspaceId, newStatusId) in statusUpdates)
+                foreach (var (BillingWorkspaceArtifactId, CurrentStatus, NewStatus, NewStatusChoiceArtifactId) in statusUpdates)
                 {
                     emailBody.AppendLine("<tr>");
-                    emailBody.AppendLine($"<td style='padding: 8px;'>{workspaceId}</td>");
-                    emailBody.AppendLine($"<td style='padding: 8px;'>{newStatusId}</td>");
+                    emailBody.AppendLine($"<td style='padding: 8px;'>{BillingWorkspaceArtifactId}</td>");
+                    emailBody.AppendLine($"<td style='padding: 8px;'>{CurrentStatus}</td>");
+                    emailBody.AppendLine($"<td style='padding: 8px;'>{NewStatus}</td>");
                     emailBody.AppendLine("</tr>");
                 }
 
                 emailBody.AppendLine("</table>");
+                await MessageHandler.Email.SendInternalNotificationAsync(
+                    _instanceSettings,
+                    emailBody,
+                    "Workspace Status Updates");
 
-                await MessageHandler.Email.SendInternalNotificationAsync(_instanceSettings, emailBody, "Workspace Status Updates");
-
-                foreach (var (BillingWorkspaceArtifactId, NewStatusChoiceArtifactId) in statusUpdates)
+                foreach (var (BillingWorkspaceArtifactId, _, _, NewStatusChoiceArtifactId) in statusUpdates)
                 {
                     try
                     {
@@ -691,10 +695,10 @@ namespace LTASBM.Agent.Managers
                             _billingManagementDatabase,
                             BillingWorkspaceArtifactId,
                             _ltasHelper.WorkspaceStatusField,
-                             new Relativity.Services.Objects.DataContracts.ChoiceRef
-                             {
-                                 ArtifactID = NewStatusChoiceArtifactId
-                             },                                                          
+                            new Relativity.Services.Objects.DataContracts.ChoiceRef
+                            {
+                                ArtifactID = NewStatusChoiceArtifactId
+                            },
                             true,
                             _ltasHelper.Logger);
                     }
@@ -703,7 +707,7 @@ namespace LTASBM.Agent.Managers
                         _ltasHelper.Logger.LogError(ex,
                             "Error updating status for workspace {WorkspaceId} to status {NewStatus}",
                             BillingWorkspaceArtifactId,
-                            NewStatusChoiceArtifactId);                        
+                            NewStatusChoiceArtifactId);
                     }
                 }
             }
@@ -713,6 +717,5 @@ namespace LTASBM.Agent.Managers
                 throw;
             }
         }
-
     }
 }

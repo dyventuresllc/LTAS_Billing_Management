@@ -7,7 +7,6 @@ using Relativity.Services.Objects;
 using System.Threading.Tasks;
 using LTASBM.Agent.Managers;
 using System.Data.SqlClient;
-using kCura.Vendor.Castle.Core.Logging;
 
 namespace LTASBM.Agent
 {
