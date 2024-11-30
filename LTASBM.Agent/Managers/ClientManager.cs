@@ -61,17 +61,21 @@ namespace LTASBM.Agent.Managers
             var newClients = GetNewClientsForBilling(eddsClients, billingClients);
             await ProcessNewClientsAsync(newClients);
         }
+
         private IEnumerable<EddsClients> GetInvalidClients(List<EddsClients> eddsClients)
             => eddsClients.Where(c => c.EddsClientNumber.Length != VALID_CLIENT_NUMBER_LENGTH);
+
         private IEnumerable<EddsClients> GetDuplicateClients(List<EddsClients>eddsClients) 
             => eddsClients
                 .GroupBy(c => c.EddsClientNumber)
                 .Where(g => g.Count() > 1)
                 .SelectMany(g => g);
+
         private IEnumerable<EddsClients> GetNewClientsForBilling(List<EddsClients>eddsClients, List<BillingClients> billingClients) 
             => eddsClients.Where(edds =>
                 !billingClients.Any(billing => billing.BillingEddsClientArtifactId == edds.EddsClientArtifactId)
                 && edds.EddsClientNumber.Length == VALID_CLIENT_NUMBER_LENGTH);
+
         private async Task NotifyInvalidClientsAsync(IEnumerable<EddsClients> invalidClients)
         {
             foreach (var client in invalidClients)
@@ -81,6 +85,7 @@ namespace LTASBM.Agent.Managers
                 await MessageHandler.Email.SentInvalidClientNumber(_instanceSettings, emailBody, client.EddsClientCreatedByEmail);
             }
         }
+
         private async Task NotifyDuplicateClientsAsync (IEnumerable<EddsClients> duplicateClients)
         {
             if(duplicateClients.Any()) 
@@ -90,6 +95,7 @@ namespace LTASBM.Agent.Managers
                 await MessageHandler.Email.SendInternalNotificationAsync(_instanceSettings, emailBody, "Duplicate Clients Found");
             }
         }
+
         private async Task ProcessNewClientsAsync(IEnumerable<EddsClients> newClients) 
         {
             if (!newClients.Any()) return;
@@ -97,12 +103,14 @@ namespace LTASBM.Agent.Managers
             await CreateNewClientsInBillingAsync(newClients);
             
         }
+
         private async Task NotifyNewClientsAsync(IEnumerable<EddsClients> newClients) 
         {
             var emailBody = new StringBuilder();
             MessageHandler.NewClientsEmailBody(emailBody, newClients.ToList());
             await MessageHandler.Email.SendNewClientsReportingAsync(_instanceSettings, emailBody);
         }
+
         private async Task CreateNewClientsInBillingAsync(IEnumerable<EddsClients> newClients)
         {
             foreach (var client in newClients)
@@ -135,5 +143,6 @@ namespace LTASBM.Agent.Managers
                 }
             }
         }
+
     }
 }

@@ -3,6 +3,7 @@ using LTASBM.Agent.Models;
 using LTASBM.Agent.Utilites;
 using Relativity.API;
 using Relativity.Services.Objects;
+using Relativity.Services.Objects.DataContracts;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -47,6 +48,7 @@ namespace LTASBM.Agent.Managers
                 _ltasHelper.Logger.LogError(ex, "Error In ProcessWorkspaceRoutine");
             }
         }
+
         public async Task ProcessMonthlyReportingJobs()
         {
             var eddsWorkspaces = _dataHandler.EddsWorkspaces();
@@ -58,6 +60,7 @@ namespace LTASBM.Agent.Managers
             var eddsWorkspaces = _dataHandler.EddsWorkspaces();
             await NotifyMissingTeamInfoAsync(eddsWorkspaces);
         }
+
         private async Task ProcessAllWorkspaceOperationsAsync(List<EddsWorkspaces> eddsWorkspaces, List<BillingWorkspaces> billingWorkspaces)
         {
             var invalidWorkspaces = GetInvalidWorkspaces(billingWorkspaces);
@@ -71,8 +74,22 @@ namespace LTASBM.Agent.Managers
             
             await HandleOrphanedWorkspacesAsync(eddsWorkspaces, billingWorkspaces);
 
-            await HandleProcessingOnlyMismatchAsync(eddsWorkspaces);            
+            await HandleProcessingOnlyMismatchAsync(eddsWorkspaces);
+
+            var getDeletedWorkspaces = await ObjectHandler.WorkspacesDeletedNoDeletedDate(
+                    _objectManager,
+                    _billingManagementDatabase,
+                    _ltasHelper.WorkspaceObjectType,
+                    _ltasHelper.WorkspaceEDDSArtifactIDField,
+                    _ltasHelper.WorkspaceNameField,
+                    _ltasHelper.WorkspaceStatusField,
+                    _ltasHelper.WorkspaceCreatedByField,
+                    _ltasHelper.WorkspaceCreatedOnField,
+                    _ltasHelper.Logger
+                    );
+            await NotifyWorkspacesDeletedNoDateAsync(getDeletedWorkspaces);
         }
+
         private IEnumerable<EddsWorkspaces> GetNewWorkspacesForBilling(List<EddsWorkspaces> eddsWorkspaces, List<BillingWorkspaces> billingWorkspaces)
         {
             var invalidWorkspaceIds = new HashSet<int>(billingWorkspaces
@@ -90,10 +107,13 @@ namespace LTASBM.Agent.Managers
                 !duplicateWorkspaceIds.Contains(edds.EddsWorkspaceArtifactId))
                 .ToList();
         }
+
         private IEnumerable<BillingWorkspaces> GetInvalidWorkspaces(List<BillingWorkspaces> billingWorkspaces) 
             => billingWorkspaces.Where(w => w.BillingWorkspaceArtifactId == 0 || w.BillingWorkspaceEddsArtifactId == 0).ToList();
+
         private IEnumerable<BillingWorkspaces> GetDuplicateWorkspaces(List<BillingWorkspaces> billingWorkspaces)
             => billingWorkspaces.GroupBy(w => w.BillingWorkspaceEddsArtifactId).Where(g => g.Count() > 1).SelectMany(g => g).ToList();
+
         private IEnumerable<EddsWorkspaces> GetWorkspacesMissingTeamInfo(List<EddsWorkspaces> eddsWorkspaces)
             => eddsWorkspaces
             .Where(w =>
@@ -102,6 +122,7 @@ namespace LTASBM.Agent.Managers
             !new[] { "Template" }
                 .Contains(w.EddsWorkspaceStatusName, StringComparer.OrdinalIgnoreCase))
             .ToList();
+
         private IEnumerable<BillingWorkspaces> GetOrphanedWorkspaces(
             List<EddsWorkspaces> eddsWorkspaces,
             List<BillingWorkspaces> billingWorkspaces)
@@ -110,11 +131,13 @@ namespace LTASBM.Agent.Managers
                     !eddsWorkspaces.Any(edds => edds.EddsWorkspaceArtifactId == billing.BillingWorkspaceEddsArtifactId) &&
                     billing.BillingStatusName != "Deleted")
                 .ToList();
+
         private IEnumerable<EddsWorkspaces> GetProcessingOnlyWorkspaces(List<EddsWorkspaces> eddsWorkspaces)
             => eddsWorkspaces
             .Where(w =>
             w.EddsWorkspaceStatusName.Equals("Processing Only", StringComparison.OrdinalIgnoreCase))
             .ToList();
+
         private IEnumerable<EddsWorkspaces> GetProcessingOnlyNameMismatch(List<EddsWorkspaces> eddsWorkspaces)
         {
             var nonQEInternalWorkspaces = eddsWorkspaces
@@ -137,6 +160,7 @@ namespace LTASBM.Agent.Managers
                 await MessageHandler.Email.SendInternalNotificationAsync(_instanceSettings, emailBody, "Invalid Workspaces");                
             }            
         }
+
         private async Task NotifyDuplicateWorkspacesAsync(IEnumerable<BillingWorkspaces> duplicateWorkspaces) 
         {
             if(duplicateWorkspaces.Any()) 
@@ -146,18 +170,21 @@ namespace LTASBM.Agent.Managers
                 await MessageHandler.Email.SendInternalNotificationAsync(_instanceSettings, emailBody, "Duplicate Workspaces Found");
             }            
         }
+
         private async Task ProcessNewWorkspacesAsync(IEnumerable<EddsWorkspaces> newWorksapces) 
         {
             if(!newWorksapces.Any()) return;
             await NotifyNewWorkspacesAsync(newWorksapces);
             await CreateNewWorkspacesInBillingAsync(newWorksapces);
         }
+
         private async Task NotifyNewWorkspacesAsync(IEnumerable<EddsWorkspaces> newWorkspaces) 
         {
             var emailBody = new StringBuilder();
             MessageHandler.NewWorkspacesEmailBody(emailBody, newWorkspaces.ToList());
             await MessageHandler.Email.SendInternalNotificationAsync(_instanceSettings, emailBody, "New Workspaces");
         }
+
         private async Task CreateNewWorkspacesInBillingAsync(IEnumerable<EddsWorkspaces> NewWorkspaces) 
         {
             foreach (var workspace in NewWorkspaces)
@@ -193,11 +220,14 @@ namespace LTASBM.Agent.Managers
                 }
             }
         }
+
         private async Task NotifyMissingTeamInfoAsync(List<EddsWorkspaces> eddsWorkspaces)
         {
             try
             {
-                var workspacesMissingInfo = GetWorkspacesMissingTeamInfo(eddsWorkspaces);
+                var workspacesMissingInfo = GetWorkspacesMissingTeamInfo(eddsWorkspaces)
+                    .OrderBy(w => w.EddsWorkspaceCreatedOn)
+                    .ToList();
 
                 if (!workspacesMissingInfo.Any()) return;
 
@@ -228,10 +258,9 @@ namespace LTASBM.Agent.Managers
 
                 emailBody.AppendLine("</table>");
 
-                await MessageHandler.Email.SendInternalNotificationAsync(
+                await MessageHandler.Email.SendMissingInfoReportingAsync(
                     _instanceSettings,
-                    emailBody,
-                    "Workspaces Missing Team Information");
+                    emailBody);
             }
             catch (Exception ex)
             {
@@ -239,6 +268,7 @@ namespace LTASBM.Agent.Managers
                 throw;
             }
         }
+
         private async Task HandleOrphanedWorkspacesAsync(
             List<EddsWorkspaces> eddsWorkspaces,
             List<BillingWorkspaces> billingWorkspaces)
@@ -294,8 +324,7 @@ namespace LTASBM.Agent.Managers
                                 new Relativity.Services.Objects.DataContracts.ChoiceRef
                                 {
                                     ArtifactID = deletedStatusArtifactId
-                                },
-                                true,
+                                },                                
                                 _ltasHelper.Logger);
                         }
                         else
@@ -320,6 +349,7 @@ namespace LTASBM.Agent.Managers
                 throw;
             }
         }
+
         private async Task HandleProcessingOnlyMismatchAsync(List<EddsWorkspaces> eddsWorkspaces)
         {
             try
@@ -362,6 +392,7 @@ namespace LTASBM.Agent.Managers
                 throw;
             }
         }
+
         private async Task HandleProcessingOnlyAgeCheckAsync(List<EddsWorkspaces> eddsWorkspaces)
         {
             try
@@ -435,5 +466,47 @@ namespace LTASBM.Agent.Managers
                 throw;
             }
         }
+
+        private async Task NotifyWorkspacesDeletedNoDateAsync(QueryResult queryResult)
+        {
+            try
+            {
+                if (queryResult?.Objects == null || !queryResult.Objects.Any()) return;
+
+                var emailBody = new StringBuilder();
+                emailBody.AppendLine("The following workspaces are marked as Deleted but missing a Deleted Date:");
+                emailBody.AppendLine("<table border='1' style='border-collapse: collapse;'>");
+                emailBody.AppendLine("<tr style='background-color: #f2f2f2;'>");
+                emailBody.AppendLine("<th style='padding: 8px;'>Workspace Name</th>");
+                emailBody.AppendLine("<th style='padding: 8px;'>Workspace ID</th>");
+                emailBody.AppendLine("<th style='padding: 8px;'>Created By</th>");
+                emailBody.AppendLine("<th style='padding: 8px;'>Created On</th>");
+                emailBody.AppendLine("</tr>");
+
+                foreach (var workspace in queryResult.Objects)
+                {
+                    emailBody.AppendLine("<tr>");
+                    emailBody.AppendLine($"<td style='padding: 8px;'>{workspace.FieldValues.FirstOrDefault(f => f.Field.Name == "Workspace Name")?.Value ?? "N/A"}</td>");
+                    emailBody.AppendLine($"<td style='padding: 8px;'>{workspace.ArtifactID}</td>");
+                    emailBody.AppendLine($"<td style='padding: 8px;'>{workspace.FieldValues.FirstOrDefault(f => f.Field.Name == "Workspace Created By")?.Value ?? "N/A"}</td>");
+                    emailBody.AppendLine($"<td style='padding: 8px;'>{workspace.FieldValues.FirstOrDefault(f => f.Field.Name == "Workspace Created On")?.Value ?? "N/A"}</td>");
+                    emailBody.AppendLine("</tr>");
+                }
+
+                emailBody.AppendLine("</table>");
+
+                await MessageHandler.Email.SendInternalNotificationAsync(
+                    _instanceSettings,
+                    emailBody,
+                    "Workspaces Missing Deleted Date");
+            }
+            catch (Exception ex)
+            {
+                _ltasHelper.Logger.LogError(ex,
+                    "Error checking for workspaces missing deleted date");
+                throw;
+            }
+        }
+
     }
 }

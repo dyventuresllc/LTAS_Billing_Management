@@ -7,6 +7,7 @@
         public string EddsMatterNumber { get; set; }
         public string EddsMatterCreatedByFirstName { get;set; }
         public string EddsMatterCreatedByEmail { get; set; }
+        public int EddsMatterClientEDDSArtifactID { get; set; }
     }
 
     public class BillingMatters
@@ -16,5 +17,6 @@
         public string BillingEddsMatterName { get;set; }
         public string BillingEddsMatterNumber { get;set; }
         public int BillingClientId { get; set; }
+        public int BillingMatterEDDSClientArtifactID { get; set; }
     }
 }

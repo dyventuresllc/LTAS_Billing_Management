@@ -1,9 +1,13 @@
-﻿using Relativity.API;
+﻿using LTASBM.Agent.Models;
+using Relativity.API;
 using Relativity.Services.Objects;
 using Relativity.Services.Objects.DataContracts;
 using System;
+using System.Collections.Generic;
 using System.Data.SqlClient;
+using System.Linq;
 using System.Threading.Tasks;
+
 
 namespace LTASBM.Agent.Utilites
 {
@@ -23,7 +27,7 @@ namespace LTASBM.Agent.Utilites
         public Guid MatterNumberField { get; } = new Guid("3A8B7AC8-0393-4C48-9F58-C60980AE8107");
         public Guid MatterNameField { get; } = new Guid("C375AA14-D5CD-484C-91D5-35B21826AD14");
         public Guid MatterEddsArtifactIdField { get; } = new Guid("8F134CD2-4DB1-48E4-8479-2F7E7B18CF9F");
-        public Guid MatterGUIDField { get; } = new Guid("4E41FF7F-9D1C-4502-96D9-DFBB9252B3E6");        
+        public Guid MatterGUIDField { get; } = new Guid("4E41FF7F-9D1C-4502-96D9-DFBB9252B3E6");
         public Guid MatterClientObjectField { get; } = new Guid("0DD5C18A-35F8-4CF1-A00B-7814FA3A5788");
 
         //Workspace Object Type and Field GUIDs
@@ -32,21 +36,29 @@ namespace LTASBM.Agent.Utilites
         public Guid WorkspaceCreatedByField { get; } = new Guid("69B6424F-0589-4080-875F-85193D3064D0");
         public Guid WorkspaceCreatedOnField { get; } = new Guid("305A1D9E-A8D0-4EEC-A76D-FDF6839C712B");
         public Guid WorkspaceNameField { get; } = new Guid("8CECDA63-0D55-45E4-8965-0F5F6B6A5C73");
-        public Guid WorkspaceMatterNumberField { get; } = new Guid("FC3B7349-C34E-444F-A94B-B6D518E508BD");
-        public Guid WorkspaceClientNumberField { get; } = new Guid("32452C8D-2AE1-4276-A1D6-BF7B8458506D");
+        public Guid WorkspaceMatterNumberField { get; } = new Guid("FC3B7349-C34E-444F-A94B-B6D518E508BD");        
         public Guid WorkspaceCaseTeamField { get; } = new Guid("0E3A3210-7083-4677-B851-B5FFB96BC618");
         public Guid WorkspaceLtasAnalystField { get; } = new Guid("B5EFD6A5-010B-41CE-B233-6CC517AA86EE");
         public Guid WorkspaceStatusField { get; } = new Guid("4506039A-78A1-49DB-9B09-976D407E14F7");
 
+        //Billing Recipient
+        public Guid UserObjectType { get; } = new Guid("4DFCF305-41FB-4CB6-8E88-521E928F0DA7");
+        public Guid UserFirstNameField { get; } = new Guid("C3CA7F99-0974-4E6C-8338-E47B57570FAC");
+        public Guid UserLastNameField { get; } = new Guid("B87ECC86-3492-422C-9C13-0F83316C6DA3");
+        public Guid UserEmailAddressField { get; } = new Guid("23576B7F-738F-4F55-AC2D-AD4B3C26BCB4");
+        public Guid UserEddsArtifactIdField { get; } = new Guid("AE481D85-0C01-4DAF-8224-672C9E524250");
+
+        public Guid UserVisibleField { get; } = new Guid("6DF40CDA-8B30-47ED-9AAA-0B75F194B74E");
         public IHelper Helper => _helper; //public property to access helper when needed
-        public IAPILog Logger => _logger; 
+        public IAPILog Logger => _logger;
 
         public LTASBMHelper(IHelper helper, IAPILog logger)
         {
             _helper = helper ?? throw new ArgumentNullException(nameof(helper));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
-        public async Task<int> LookupClientArtifactID(IObjectManager objectManager, int workspaceArtifactId, string clientNumberValue) 
+
+        public async Task<int> LookupClientArtifactID(IObjectManager objectManager, int workspaceArtifactId, string clientNumberValue)
         {
             try
             {
@@ -54,7 +66,7 @@ namespace LTASBM.Agent.Utilites
                 {
                     ObjectType = new ObjectTypeRef
                     {
-                        Guid = ClientObjectType  
+                        Guid = ClientObjectType
                     },
                     Fields = new FieldRef[]
                     {
@@ -78,7 +90,41 @@ namespace LTASBM.Agent.Utilites
                 return 0;
             }
         }
-        public async Task<int> LookupMatterArtifactID(IObjectManager objectManager, int workspaceArtifactId, string EddsMatterArtifactIdValue) 
+
+        public async Task<int> LookupClientArtifactID(IObjectManager objectManager, int workspaceArtifactId, int clientEddsArtifactID)
+        {
+            try
+            {
+                var queryRequest = new QueryRequest
+                {
+                    ObjectType = new ObjectTypeRef
+                    {
+                        Guid = ClientObjectType
+                    },
+                    Fields = new FieldRef[]
+                    {
+                    new FieldRef{ Name = "ArtifactID" }
+                    },
+                    Condition = $"(('EDDS Client ArtifactID' == {clientEddsArtifactID}))"
+                };
+
+                var result = await objectManager.QueryAsync(workspaceArtifactId, queryRequest, 0, 1);
+                return result.Objects[0].ArtifactID;
+            }
+            catch (Exception ex)
+            {
+                string methodName = nameof(LookupClientArtifactID);
+                string errorMessage = ex.InnerException != null
+                    ? $"Method: {methodName} ---Value:{clientEddsArtifactID} {ex.InnerException.Message}---{ex.StackTrace}"
+                    : $"Method: {methodName} ---Value:{clientEddsArtifactID} {ex.Message}---{ex.StackTrace}";
+
+                _logger.ForContext<LTASBMHelper>()
+                       .LogError($"Error in {methodName}: {errorMessage}");
+                return 0;
+            }
+        }
+
+        public async Task<int> LookupMatterArtifactID(IObjectManager objectManager, int workspaceArtifactId, string EddsMatterArtifactIdValue)
         {
             try
             {
@@ -110,6 +156,32 @@ namespace LTASBM.Agent.Utilites
                 return 0;
             }
         }
+
+        public string GetWorkspaceNameByBillingWorkspaceArtifactID(int billingWorkspaceArtifactId, List<BillingWorkspaces> billingWorkspaces)
+        {
+            return billingWorkspaces
+                .Where(w => w.BillingWorkspaceArtifactId == billingWorkspaceArtifactId)
+                .Select(w => w.BillingWorkspaceName)
+                .FirstOrDefault() ?? "Uknown";
+        }
+
+        public string GetMatterNameByEDDSMatterArtifactId(int matterArtifactId, List<EddsMatters> eddsMatters)
+        {
+            return eddsMatters
+                .Where(m => m.EddsMatterArtifactId == matterArtifactId)
+                .Select(m => m.EddsMatterName)
+                .FirstOrDefault() ?? "Uknown";
+        }
+
+        public int GetMatterArifactIdByEddsMatterArtifactId(int eddsMatterArtifactId, List<BillingMatters> billingMatters)
+        {
+            return billingMatters
+                .Where(w => w.BillingEddsMatterArtifactId == eddsMatterArtifactId)
+                .Select(m => m.BillingMatterArtficatId)
+                .DefaultIfEmpty(0)
+                .First();
+        }
+
         public int GetWorkspaceArtifactID(IDBContext dBContext)
         {
             try
@@ -129,6 +201,7 @@ namespace LTASBM.Agent.Utilites
                 return 0;
             }
         }
+
         public int GetCaseStatusArtifactID(IDBContext dBContext, string statusValue)
         {
             try
@@ -156,6 +229,7 @@ namespace LTASBM.Agent.Utilites
                 return 0;
             }
         }
+
         public (int ArtifactTypeID, int ViewArtifactID, int TabArtifactID) GetHyperlinkValues(IDBContext dBContext, string guidStringValue) 
         {
             try
@@ -195,6 +269,7 @@ namespace LTASBM.Agent.Utilites
                 throw;
             }
         }
+
         public (string FirstName, string LastName) GetUserName(IDBContext dBContext, string emailAddress)
         {
             try 
@@ -220,5 +295,6 @@ namespace LTASBM.Agent.Utilites
                 throw;
             }
         }
+
     }
 }

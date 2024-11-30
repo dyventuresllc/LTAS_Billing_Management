@@ -79,6 +79,7 @@ namespace LTASBM.Agent.Handlers
 
             return htmlBody;
         }        
+
         public static StringBuilder NewClientsEmailBody(StringBuilder htmlBody, List<EddsClients> clients)
         {
             htmlBody.AppendLine("<!DOCTYPE html>");
@@ -138,6 +139,7 @@ namespace LTASBM.Agent.Handlers
 
             return htmlBody;
         }
+
         public static StringBuilder InvalidMatterEmailBody(StringBuilder htmlBody, EddsMatters matters )
         {
             htmlBody.AppendLine("<!DOCTYPE html>");
@@ -193,6 +195,7 @@ namespace LTASBM.Agent.Handlers
 
             return htmlBody;
         }
+
         public static StringBuilder NewMattersEmailBody(StringBuilder htmlBody, List<EddsMatters> matters)
         {
             htmlBody.AppendLine("<!DOCTYPE html>");
@@ -253,6 +256,7 @@ namespace LTASBM.Agent.Handlers
 
             return htmlBody;
         }
+
         public static StringBuilder DuplicateMattersEmailBody(StringBuilder htmlBody, List<EddsMatters> duplicateMatters)
         {
             htmlBody.AppendLine("<html><body style='font-family: Arial, sans-serif;'>");
@@ -280,6 +284,7 @@ namespace LTASBM.Agent.Handlers
             htmlBody.AppendLine("</body></html>");            
             return htmlBody;
         }
+
         public static StringBuilder DuplicateClientEmailBody(StringBuilder htmlBody, List<EddsClients> duplicateClients)
         {
             htmlBody.AppendLine("<html><body style='font-family: Arial, sans-serif;'>");
@@ -307,6 +312,7 @@ namespace LTASBM.Agent.Handlers
             htmlBody.AppendLine("</body></html>");
             return htmlBody;
         }
+
         public static StringBuilder InvalidWorkspaceEmailBody(StringBuilder htmlBody, List<BillingWorkspaces> billingWorkspaces)
         {
             htmlBody.AppendLine("<!DOCTYPE html>");
@@ -378,6 +384,7 @@ namespace LTASBM.Agent.Handlers
 
             return htmlBody;
         }
+
         public static StringBuilder DuplicateWorkspacesEmailBody(StringBuilder htmlBody, List<BillingWorkspaces> duplicateWorkspaces)
         {
             htmlBody.AppendLine("<html><body style='font-family: Arial, sans-serif;'>");
@@ -408,6 +415,7 @@ namespace LTASBM.Agent.Handlers
             htmlBody.AppendLine("</body></html>");
             return htmlBody;
         }
+
         public static StringBuilder NewWorkspacesEmailBody(StringBuilder htmlBody, List<EddsWorkspaces> workspaces)
         {
             htmlBody.AppendLine("<!DOCTYPE html>");
@@ -469,6 +477,7 @@ namespace LTASBM.Agent.Handlers
             htmlBody.AppendLine("</body></html>");
             return htmlBody;
         }
+
         public static StringBuilder DataSyncNotificationEmailBody(
             StringBuilder htmlBody,
             IEnumerable<(int BillingArtifactID, string EddsValue)> updates, string objectName, string fieldName)
@@ -499,6 +508,7 @@ namespace LTASBM.Agent.Handlers
             static string smtpEnvironmentValue;
             static string adminEmailAddress;
             static string teamEmailAddresses;
+            static string supportEmailAddress;
             private static void GetSMTPValue(string settingName, SMTPSetting smtpInstanceSettingSingle, IInstanceSettingsBundle instanceSettingsBundle)
             {
                 switch (settingName)
@@ -534,8 +544,13 @@ namespace LTASBM.Agent.Handlers
                         var singleSettingValueTeam = instanceSettingsBundle.GetStringAsync(smtpInstanceSettingSingle.Section, smtpInstanceSettingSingle.Name);
                         teamEmailAddresses = singleSettingValueTeam.Result;
                         break;
+                    case "AnalystCaseTeamUpdates":
+                        var singleSettingValueSupport = instanceSettingsBundle.GetStringAsync(smtpInstanceSettingSingle.Section, smtpInstanceSettingSingle.Name);
+                        supportEmailAddress = singleSettingValueSupport.Result;
+                        break;
                 }
             }
+
             public static async Task SentInvalidClientNumber(IInstanceSettingsBundle instanceSettingsBundle, StringBuilder htmlBody, string emailAddress)
             {
                 SMTPSetting smtpPassword = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPassword" };
@@ -588,6 +603,7 @@ namespace LTASBM.Agent.Handlers
                     await smtpClient.SendMailAsync(emailMessage);
                 }
             }
+
             public static async Task SendNewClientsReportingAsync(IInstanceSettingsBundle instanceSettingsBundle, StringBuilder htmlBody)
             {
                 SMTPSetting smtpPassword = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPassword" };
@@ -633,6 +649,7 @@ namespace LTASBM.Agent.Handlers
                     await smtpClient.SendMailAsync(emailMessage);
                 }                
             }
+
             public static async Task SentInvalidMatterNumberAsync(IInstanceSettingsBundle instanceSettingsBundle, StringBuilder htmlBody, string emailAddress)
             {
                 SMTPSetting smtpPassword = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPassword" };
@@ -683,6 +700,7 @@ namespace LTASBM.Agent.Handlers
                     await smtpClient.SendMailAsync(emailMessage);
                 }
             }
+
             public static async Task SendNewMattersReportingAsync(IInstanceSettingsBundle instanceSettingsBundle, StringBuilder htmlBody)
             {
                 SMTPSetting smtpPassword = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPassword" };
@@ -740,6 +758,7 @@ namespace LTASBM.Agent.Handlers
                     await smtpClient.SendMailAsync(emailMessage);
                 }
             }
+
             public static async Task SendInternalNotificationAsync(IInstanceSettingsBundle instanceSettingsBundle, StringBuilder htmlBody, string emailSubject)
             {
                 SMTPSetting smtpPassword = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPassword" };
@@ -785,6 +804,56 @@ namespace LTASBM.Agent.Handlers
                     await smtpClient.SendMailAsync(emailMessage);
                 }
             }
+
+            public static async Task SendMissingInfoReportingAsync(IInstanceSettingsBundle instanceSettingsBundle, StringBuilder htmlBody)
+            {
+                SMTPSetting smtpPassword = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPassword" };
+                SMTPSetting smtpPort = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPort" };
+                SMTPSetting smtpServer = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPServer" };
+                SMTPSetting smtpUser = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPUserName" };
+                SMTPSetting smtpEnvironment = new SMTPSetting { Section = "Relativity.Core", Name = "RelativityInstanceURL" };
+                SMTPSetting adminEmailSetting = new SMTPSetting { Section = "LTAS Billing Management", Name = "AdminEmailAddress" };
+                SMTPSetting reportingEmailSetting = new SMTPSetting { Section = "LTAS Billing Management", Name = "AnalystCaseTeamUpdates" };
+                List<SMTPSetting> smtpSettings = new List<SMTPSetting> { smtpPort, smtpServer, smtpUser, smtpPassword, smtpEnvironment, adminEmailSetting, reportingEmailSetting };
+
+                foreach (var smtpInstanceSettingSingle in smtpSettings)
+                {
+                    try
+                    {
+                        GetSMTPValue(smtpInstanceSettingSingle.Name, smtpInstanceSettingSingle, instanceSettingsBundle);
+                    }
+                    catch (Exception)
+                    {
+                        throw;
+                    }
+                }
+
+                var emailMessage = new MailMessage
+                {
+                    From = new MailAddress("noreply@relativity.one", "LTAS Billing Management"),
+                    Subject = $"{smtpEnvironmentValue.Split('-')[1].Split('.')[0].ToUpper()} - Workspaces Missing Team Information",
+                    Body = htmlBody.ToString(),
+                    IsBodyHtml = true
+                };
+
+               
+                emailMessage.To.Add(supportEmailAddress);
+                emailMessage.CC.Add(adminEmailAddress);
+                emailMessage.ReplyToList.Add(new MailAddress(adminEmailAddress));
+
+                using (var smtpClient = new SmtpClient())
+                {
+                    smtpClient.Host = smtpServerValue;
+                    smtpClient.Port = smtpPortValue;
+                    smtpClient.EnableSsl = true;
+                    smtpClient.DeliveryMethod = SmtpDeliveryMethod.Network;
+                    smtpClient.DeliveryFormat = SmtpDeliveryFormat.SevenBit;
+                    smtpClient.UseDefaultCredentials = false;
+                    smtpClient.Credentials = new NetworkCredential(smtpUserValue, smtpPasswordValue);
+                    await smtpClient.SendMailAsync(emailMessage);
+                }
+            }
+
         }
     }
 }

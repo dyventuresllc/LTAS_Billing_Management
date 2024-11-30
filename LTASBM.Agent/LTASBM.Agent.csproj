@@ -44,6 +44,7 @@
   <ItemGroup>
     <Compile Include="LTASBillingAgent.cs" />
     <Compile Include="Handlers\MessageHandler.cs" />
+    <Compile Include="Models\Users.cs" />
     <Compile Include="Models\Workspaces.cs" />
     <Compile Include="Models\Matters.cs" />
     <Compile Include="Models\Clients.cs" />

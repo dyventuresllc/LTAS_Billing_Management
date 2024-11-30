@@ -41,7 +41,7 @@ namespace LTASBM.Agent.Managers
             {
                 var eddsMatters = _dataHandler.EddsMatters();
                 var billingMatters = _dataHandler.BillingMatters();
-                
+
                 await ProcessAllMatterOperationsAsync(eddsMatters, billingMatters);                
             }
             catch (Exception ex)
@@ -49,6 +49,7 @@ namespace LTASBM.Agent.Managers
                 _ltasHelper.Logger.LogError(ex, "Error In ProcessMatterRoutine");
             }
         }        
+
         private async Task ProcessAllMatterOperationsAsync(List<EddsMatters> eddsMatters, List<BillingMatters> billingMatters)
         {
             var invalidMatters = GetInvalidMatters(eddsMatters);
@@ -60,19 +61,23 @@ namespace LTASBM.Agent.Managers
             var newMatters = GetNewMattersForBilling(eddsMatters, billingMatters);
             await ProcessNewMattesAsync(newMatters);
         }
+
         private IEnumerable<EddsMatters> GetNewMattersForBilling(List<EddsMatters> eddsMatters, List<BillingMatters> billingMatters)
             => eddsMatters
                 .Where(edds => !billingMatters
                 .Any(billing => billing.BillingEddsMatterArtifactId == edds.EddsMatterArtifactId)
                 && edds.EddsMatterNumber.Length >= VALID_MATTER_NUMBER_LENGTH);
+
         private IEnumerable<EddsMatters> GetInvalidMatters(List<EddsMatters> eddsMatters)
             => eddsMatters.Where(c => c.EddsMatterNumber.Length < VALID_MATTER_NUMBER_LENGTH);
+
         private IEnumerable<EddsMatters> GetDuplicateMatters(List<EddsMatters> eddsMatters)
             => eddsMatters
                 .GroupBy(c => c.EddsMatterNumber)
                 .Where(g => g.Count() > 1)
                 .SelectMany(g => g)
                 .ToList();
+
         private async Task NotifyInvalidMattersAsync(IEnumerable<EddsMatters> invalidMatters)
         {
             if (invalidMatters.Any())
@@ -85,6 +90,7 @@ namespace LTASBM.Agent.Managers
                 }
             }
         }
+
         private async Task NotifiyDuplicateMattersAsync(IEnumerable<EddsMatters> duplicateMatters)
         {
             if(duplicateMatters.Any()) 
@@ -94,18 +100,21 @@ namespace LTASBM.Agent.Managers
                 await MessageHandler.Email.SendInternalNotificationAsync(_instanceSettings, emailBody, "Duplicate Matters Found");
             }
         }
+
         private async Task ProcessNewMattesAsync(IEnumerable<EddsMatters> newMatters)
         {
             if (!newMatters.Any()) return;
             await NotifyNewMattersAsync(newMatters);
             await CreateNewMattersInBillingAsync(newMatters);
         }
+
         private async Task NotifyNewMattersAsync(IEnumerable<EddsMatters> newMatters)
         { 
             var emailBody = new StringBuilder();
             MessageHandler.NewMattersEmailBody(emailBody, newMatters.ToList());
             await MessageHandler.Email.SendNewMattersReportingAsync(_instanceSettings, emailBody);
         }
+
         private async Task CreateNewMattersInBillingAsync(IEnumerable<EddsMatters> newMatters)
         {
             foreach(var matter in newMatters)
@@ -115,7 +124,7 @@ namespace LTASBM.Agent.Managers
                     _ltasHelper.Logger.LogInformation("Attempting to create matter: {matterDetails}",
                         new { matter.EddsMatterArtifactId, matter.EddsMatterNumber, matter.EddsMatterName });
                     
-                    int qryClientArtifactIDResult = await _ltasHelper.LookupClientArtifactID(_objectManager, _billingManagementDatabase, matter.EddsMatterNumber.Substring(0, 5).ToString());
+                    int qryClientArtifactIDResult = await _ltasHelper.LookupClientArtifactID(_objectManager, _billingManagementDatabase, matter.EddsMatterClientEDDSArtifactID);
 
                     if (qryClientArtifactIDResult == 0)
                     {
@@ -145,5 +154,6 @@ namespace LTASBM.Agent.Managers
                 }
             }            
         }
+
     }
 }

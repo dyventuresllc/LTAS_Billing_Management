@@ -64,11 +64,12 @@ namespace LTASBM.Agent.Handlers
         {
             var matters = new List<EddsMatters>();
 
-            string sql = @"SELECT em.ArtifactID, em.[Name], em.Number,u.FirstName 'CreatedByFirstName', u.EmailAddress 'CreatedByEmailAddress'
+            string sql = @"SELECT 
+                                em.ArtifactID, em.[Name], em.Number,u.FirstName 'CreatedByFirstName', u.EmailAddress 'CreatedByEmailAddress', em.ClientArtifactID
                            FROM EDDS.eddsdbo.ExtendedMatter em  
                            JOIN EDDS.eddsdbo.[User] u WItH (NOLOCK)
                                 ON u.ArtifactID = em.CreatedBy
-                           WHERE em.Number NOT IN ('Relativity Template', 'Billing','Relativity', 'QE Template')";
+                           WHERE em.Number NOT IN ('Relativity Template', 'Billing','Relativity', 'QE Template');";
             var dt = EddsDbContext.ExecuteSqlStatementAsDataTable(sql);
 
             foreach (DataRow row in dt.Rows)
@@ -79,7 +80,8 @@ namespace LTASBM.Agent.Handlers
                     EddsMatterName = row["Name"]?.ToString(),
                     EddsMatterNumber = row["Number"]?.ToString(),
                     EddsMatterCreatedByFirstName = row["CreatedByFirstName"].ToString(),
-                    EddsMatterCreatedByEmail = row["CreatedByEmailAddress"].ToString()
+                    EddsMatterCreatedByEmail = row["CreatedByEmailAddress"].ToString(),
+                    EddsMatterClientEDDSArtifactID = row.Field<int>("ClientArtifactID")
                 });
             }
             return matters;
@@ -88,7 +90,12 @@ namespace LTASBM.Agent.Handlers
         public List<BillingMatters> BillingMatters()
         {
             var matters = new List<BillingMatters>();
-            string sql = @"SELECT ArtifactID, EDDSMatterArtifactID, MatterNumber, MatterName, ClientID FROM eddsdbo.Matter WITH (NOLOCK)";
+            string sql = @"
+                            SELECT 
+                                m.ArtifactID, m.EDDSMatterArtifactID, m.MatterNumber, m.MatterName, m.ClientID, c.EDDSClientArtifactID 
+                            FROM eddsdbo.Matter m WITH (NOLOCK)
+                            LEFT JOIN eddsdbo.Client c WITH (NOLOCK)
+                                ON c.ArtifactID = m.ClientID;";
             var dt = BillingDbContext.ExecuteSqlStatementAsDataTable(sql);
 
             foreach (DataRow row in dt.Rows)
@@ -99,7 +106,8 @@ namespace LTASBM.Agent.Handlers
                     BillingEddsMatterArtifactId = row.Field<int>("EDDSMatterArtifactID"),
                     BillingEddsMatterName = row["MatterName"]?.ToString(),
                     BillingEddsMatterNumber = row["MatterNumber"]?.ToString(),
-                    BillingClientId = row.Field<int>("ClientID")
+                    BillingClientId = row.Field<int>("ClientID"),
+                    BillingMatterEDDSClientArtifactID = row.Field<int>("EDDSClientArtifactID")
                 });
             }
             return matters;
@@ -115,9 +123,7 @@ namespace LTASBM.Agent.Handlers
                             JOIN EDDS.eddsdbo.[User] u WITH (NOLOCK)
                                 ON u.ArtifactID = ec.CreatedBy
                             WHERE ec.ClientName NOT IN('Relativity Template','Quinn Emanuel Template')
-	                        AND ec.MatterNumber NOT IN('Relativity')";
-	                        //AND ec.MatterName NOT IN('Quinn Internal')
-	                        //AND ec.StatusName NOT IN('Processing Only')";
+	                        AND ec.MatterNumber NOT IN('Relativity')";	                
 
             var dt = EddsDbContext.ExecuteSqlStatementAsDataTable(sql);
 
@@ -148,7 +154,7 @@ namespace LTASBM.Agent.Handlers
             var workspaces = new List<BillingWorkspaces>();
 
             sql = $@"SELECT 
-                        w.ArtifactID, w.EDDSWorkspaceArtifactID, w.WorkspaceCreatedBy, w.WorkspaceCreatedOn, w.WorkspaceName, w.WorkspaceMatterObject, w.LTASAnalyst, w.CaseTeam, c.[Name] 'Case Status'
+                        w.ArtifactID, w.EDDSWorkspaceArtifactID, w.WorkspaceCreatedBy, w.WorkspaceCreatedOn, w.WorkspaceName, w.WorkspaceMatterObject, w.LTASAnalyst, w.CaseTeam, c.[Name] 'Case Status', m.EDDSMatterArtifactID
 	                FROM eddsdbo.workspaces w
 	                LEFT JOIN eddsdbo.Matter m
 		                ON w.WorkspaceMatterObject = m.ArtifactID
@@ -171,10 +177,74 @@ namespace LTASBM.Agent.Handlers
                     BillingWorkspaceMatterArtifactId = row["WorkspaceMatterObject"] != DBNull.Value ? Convert.ToInt32(row["WorkspaceMatterObject"]) : 0,
                     BillingWorkspaceAnalyst = Convert.ToString(row["LTASAnalyst"]),
                     BillingWorkspaceCaseTeam = Convert.ToString(row["CaseTeam"]),
-                    BillingStatusName = Convert.ToString(row["Case Status"])
+                    BillingStatusName = Convert.ToString(row["Case Status"]),
+                    BillingWorkspaceMatterEddsArtifactId = row["EDDSMatterArtifactID"] != DBNull.Value ? Convert.ToInt32(row["EDDSMatterArtifactID"]) : 0,
                 });
             }
             return workspaces;
         }
+
+        public List<EddsUsers> EDDSUsers()
+        {
+            var users = new List<EddsUsers>();
+
+            string sql = @"
+                        SELECT 
+                            ArtifactID, 
+                            FirstName, 
+                            LastName, 
+                            EmailAddress,
+	                        RelativityAccess
+                        FROM EDDS.eddsdbo.ExtendedUser
+                        WHERE EmailAddress LIKE '%@quinnemanuel.com'";
+            
+            var dt = EddsDbContext.ExecuteSqlStatementAsDataTable(sql);
+
+            foreach (DataRow row in dt.Rows)
+            {
+                users.Add(new EddsUsers 
+                {
+                    EddsUserArtifactId = row["ArtifactID"] != DBNull.Value 
+                        ? Convert.ToInt32(row["ArtifactId"])
+                        : 0,
+                    EddsUserFirstName = row["FirstName"].ToString() ?? string.Empty,
+                    EddsUserLastName = row["LastName"].ToString() ?? string.Empty,
+                    EddsUserEmailAddress = row["EmailAddress"].ToString() ?? string.Empty,
+                    EddsUserRelativityAccess = row["RelativityAccess"] != DBNull.Value
+                        && Convert.ToBoolean(row["RelativityAccess"])
+                });
+            }
+            return users;
+        }
+
+        public List<BillingUsers> BillingUsers()
+        {
+            var users = new List<BillingUsers>();
+
+            string sql = @"
+                        SELECT 
+	                        ArtifactID, 
+                            EDDSUserArtifactId, 
+                            FirstName, 
+                            LastName, 
+                            EmailAddress 
+                        FROM eddsdbo.BillingRecipients";
+
+            var dt = BillingDbContext.ExecuteSqlStatementAsDataTable(sql);
+
+            foreach (DataRow row in dt.Rows) 
+            {
+                users.Add(new BillingUsers
+                {
+                    BillingUserArtifactId = row.Field<int>("ArtifactID"),
+                    BillingUserEddsArtifactId = row.Field<int>("EDDSUserArtifactId"),
+                    BillingUserFirstName = row["FirstName"].ToString(),
+                    BillingUserLastName = row["LastName"].ToString(),
+                    BillingUserEmailAddress = row["EmailAddress"].ToString()
+                });
+            }
+            return users;
+        }
+
     }
 }

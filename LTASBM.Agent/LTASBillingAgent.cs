@@ -55,7 +55,7 @@ namespace LTASBM.Agent
                                            .GetAwaiter()
                                            .GetResult();
                                         break;
-                                    case 2:
+                                    case 2:                                        
                                         ProcessDailyOperationsAsync(
                                             billingDatabaseId,
                                             objectManager,
@@ -114,12 +114,12 @@ namespace LTASBM.Agent
                 dataHandler,
                 instanceSettingManager,
                 billingDatabaseId);
-
+            
             await Task.Run(async () =>
             {
                 await clientManager.ProcessClientRoutinesAsync();
             }).ConfigureAwait(false);
-
+            
             var matterRoutine = new MatterManager(
                 logger,
                 Helper,
@@ -127,12 +127,12 @@ namespace LTASBM.Agent
                 dataHandler,
                 instanceSettingManager,
                 billingDatabaseId);
-
+            
             await Task.Run(async () =>
             {
                 await matterRoutine.ProcessMatterRoutinesAsync();
             }).ConfigureAwait(false);
-
+            
             var workspaceRoutine = new WorkspaceManager(
                 logger,
                 Helper,
@@ -276,11 +276,12 @@ namespace LTASBM.Agent
                 {                 
                     return false;
                 }
-
+                bool isWeekday = now.DayOfWeek != DayOfWeek.Saturday &&
+                                 now.DayOfWeek != DayOfWeek.Sunday;
                 var notRunToday = lastExecuteTime.Date < now.Date;
                 var isAfterExecutionHour = now.Hour >= executeHour;
-                var shouldRun = notRunToday && isAfterExecutionHour;
-
+                var shouldRun = notRunToday && isAfterExecutionHour && isWeekday;
+                
                 return shouldRun;
             }
 
@@ -295,6 +296,7 @@ namespace LTASBM.Agent
 
             return false;
         }
+
         private void UpdateJobExecutionTime(IDBContext eddsDbContext, int jobId)
         {
             eddsDbContext.ExecuteNonQuerySQLStatement(
@@ -303,11 +305,13 @@ namespace LTASBM.Agent
                         FROM EDDS.QE.AutomationControl qac 
                         WHERE qac.JobId = @jobId", new[] { new SqlParameter("@jobId", jobId) });
         }
+
         private string FormatErrorMessage(Exception ex)
         {
             return ex.InnerException != null
                 ? string.Concat("---", ex.InnerException, "---", ex.StackTrace)
                 : string.Concat("---", ex.Message, "---", ex.StackTrace);
         }
+
     }
 }

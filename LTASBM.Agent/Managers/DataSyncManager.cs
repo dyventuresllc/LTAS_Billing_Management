@@ -12,21 +12,21 @@ using System.Threading.Tasks;
 namespace LTASBM.Agent.Managers
 {
     public class DataSyncManager
-    {        
+    {
         private readonly IObjectManager _objectManager;
         private readonly IInstanceSettingsBundle _instanceSettings;
         private readonly int _billingManagementDatabase;
-        private readonly LTASBMHelper _ltasHelper;    
+        private readonly LTASBMHelper _ltasHelper;
         private readonly DataHandler _dataHandler;
 
         public DataSyncManager(
             IAPILog logger,
             IHelper helper,
             IObjectManager objectManager,
-            IInstanceSettingsBundle instanceSettings,    
+            IInstanceSettingsBundle instanceSettings,
             DataHandler dataHandler,
-            int billingManagementDatabase) 
-        {           
+            int billingManagementDatabase)
+        {
             _dataHandler = dataHandler ?? throw new ArgumentNullException(nameof(dataHandler));
             _objectManager = objectManager ?? throw new ArgumentNullException(nameof(objectManager));
             _instanceSettings = instanceSettings ?? throw new ArgumentNullException(nameof(instanceSettings));
@@ -52,29 +52,33 @@ namespace LTASBM.Agent.Managers
         public async Task ProcessDataSyncRoutinesAsync()
         {
             try
-            {      
+            {
                 var eddsClients = _dataHandler.EDDSClients();
                 var billingClients = _dataHandler.BillingClients();
                 var eddsMatters = _dataHandler.EddsMatters();
                 var billingMatters = _dataHandler.BillingMatters();
                 var eddsWorkspaces = _dataHandler.EddsWorkspaces();
                 var billingWorkspaces = _dataHandler.BillingWorkspaces();
+                var eddsUsers = _dataHandler.EDDSUsers();
+                var billingUsers = _dataHandler.BillingUsers();
 
                 await ProccessAllDataSyncOperationsAsync(
-                    eddsClients, billingClients, 
-                    eddsMatters, billingMatters, 
-                    eddsWorkspaces, billingWorkspaces);
+                    eddsClients, billingClients,
+                    eddsMatters, billingMatters,
+                    eddsWorkspaces, billingWorkspaces,
+                    eddsUsers, billingUsers);
             }
-            catch (Exception ex) 
+            catch (Exception ex)
             {
                 _ltasHelper.Logger.LogError(ex, "Error In DataSyncRoutine");
-            }      
+            }
         }
 
         private async Task ProccessAllDataSyncOperationsAsync(
-            List<EddsClients>eddsclients, List<BillingClients>billingClients, 
-            List<EddsMatters> eddsMatters, List<BillingMatters> billingMatters, 
-            List<EddsWorkspaces> eddsWorkspaces, List<BillingWorkspaces> billingWorkspaces)
+            List<EddsClients> eddsclients, List<BillingClients> billingClients,
+            List<EddsMatters> eddsMatters, List<BillingMatters> billingMatters,
+            List<EddsWorkspaces> eddsWorkspaces, List<BillingWorkspaces> billingWorkspaces,
+            List<EddsUsers> eddsUsers, List<BillingUsers> billingUsers)
         {
             var clientNameUpdates = GetClientNameUpdates(eddsclients, billingClients);
             await NotifyClientNameUpdatesAsync(clientNameUpdates);
@@ -87,9 +91,6 @@ namespace LTASBM.Agent.Managers
 
             var matterNumberUpdates = GetMatterNumberUpdates(eddsMatters, billingMatters);
             await NotifyMatterNumberUpdatesAsync(matterNumberUpdates);
-
-            var matterClientObjectUpdates = GetMatterClientUpdates(eddsMatters, billingMatters, billingClients);
-            await NotifyMatterClientObjectUpdatesAsync(matterClientObjectUpdates);
 
             var workspaceNameUpdates = GetWorkspaceNameUpdates(eddsWorkspaces, billingWorkspaces);
             await NotifyWorkspaceNameUpdatesAsync(workspaceNameUpdates);
@@ -106,8 +107,26 @@ namespace LTASBM.Agent.Managers
             var workspaceAnalystUpdates = GetWorkspaceAnalystUpdates(eddsWorkspaces, billingWorkspaces);
             await NotifyWorkspaceAnalystUpdatesAsync(workspaceAnalystUpdates);
 
-            var workspaceStatusUpdates = await GetWorkspaceStatusUpdates(eddsWorkspaces, billingWorkspaces);            
+            var workspaceStatusUpdates = await GetWorkspaceStatusUpdates(eddsWorkspaces, billingWorkspaces);
             await NotifyWorkspaceStatusUpdateAsync(workspaceStatusUpdates);
+
+            var workspaceMatterUpdates = GetWorkspaceMatterMismatch(eddsWorkspaces, billingWorkspaces);
+            await NotifyWorkspaceMatterUpdatesAsync(workspaceMatterUpdates, billingWorkspaces, eddsMatters, billingMatters);            
+            
+            var billingRecipientsNewUser = GetNewUsersForBilling(eddsUsers, billingUsers);
+            await CreateNewUserAsync(billingRecipientsNewUser);
+
+            var matterClientUpdates = GetMatterClientMismatch(eddsMatters, billingMatters);
+            await NotifyMatterClientMismatchAsync(matterClientUpdates);
+
+            var userReportEmailAddressUpdates = GetUserEmailMismatches(eddsUsers, billingUsers);
+            await UpdateUserEmailMismatchAsync(userReportEmailAddressUpdates);
+
+            var userReportFirstNameUpdates = GetUserFirstNameMismatches(eddsUsers, billingUsers);
+            await UpdateUserEmailFirstNameMismatchAsync(userReportFirstNameUpdates);
+
+            var userReportLastnameUpdates = GetUserLastNameMismatches(eddsUsers, billingUsers);
+            await UpdateUserEmailLastNameMismatch(userReportLastnameUpdates);
         }
 
         private IEnumerable<(int BillingClientArtifactId, string EddsClientName)> GetClientNameUpdates(
@@ -127,7 +146,7 @@ namespace LTASBM.Agent.Managers
            .Where(result => result.BillingClientName != result.EddsClientName)
            .Select(result => (result.BillingClientArtifactId, result.EddsClientName))
            .ToList();
-        
+
         private IEnumerable<(int BillingClientArtifactId, string EddsClientNumber)> GetClientNumberUpdates(
             List<EddsClients> eddsClients,
             List<BillingClients> billingClients)
@@ -154,7 +173,7 @@ namespace LTASBM.Agent.Managers
                 eddsMatters,
                 billing => billing.BillingEddsMatterArtifactId,
                 edds => edds.EddsMatterArtifactId,
-                (billing, edds) => new 
+                (billing, edds) => new
                 {
                     BillingMatterArtifactId = billing.BillingMatterArtficatId,
                     BillingMatterName = billing.BillingEddsMatterName,
@@ -180,38 +199,6 @@ namespace LTASBM.Agent.Managers
                 })
             .Where(result => result.BillingMatterNumber != result.EddsMatterNumber)
             .Select(result => (result.BillingMatterArtifactId, result.EddsMatterNumber))
-            .ToList();
-
-        private IEnumerable<(int BillingMatterArtifactID, int NewClientArtifactId)> GetMatterClientUpdates(
-            List<EddsMatters> eddsMatters,
-            List<BillingMatters> billingMatters,
-            List<BillingClients> billingClients)
-            => billingMatters
-            .Join(
-                  eddsMatters,
-                  billing => billing.BillingEddsMatterArtifactId,
-                  edds => edds.EddsMatterArtifactId,
-                  (billing, edds) => new
-                  {
-                      BillingMatterArtifactId = billing.BillingMatterArtficatId,
-                      CurrentClientObjectValue = billing.BillingClientId,
-                      // Get the client number from EDDS Matter to find corresponding billing client
-                      EddsClientNumber = edds.EddsMatterNumber.Substring(0, 5)  // Assuming first 5 digits are client number
-                  })
-            .Join(
-                  billingClients,
-                  matter => matter.EddsClientNumber,
-                  client => client.BillingEddsClientNumber,
-                  (matter, client) => new
-                  {
-                      matter.BillingMatterArtifactId,
-                      matter.CurrentClientObjectValue,
-                      NewClientObjectValue = client.BillingClientArtifactID
-                  })
-            .Where(result => result.CurrentClientObjectValue != result.NewClientObjectValue)
-            .Select(result => (
-                result.BillingMatterArtifactId,
-                result.NewClientObjectValue))
             .ToList();
 
         private IEnumerable<(int BillingWorkspaceArtifactId, string EddsWorkspaceName)> GetWorkspaceNameUpdates(
@@ -304,7 +291,7 @@ namespace LTASBM.Agent.Managers
             .Select(result => (result.BillingWorkspaceArtifactId, result.EddsWorkspaceAnalyst))
             .ToList();
 
-        private async Task<IEnumerable<(int BillingWorkspaceArtifactId, string CurrentStatus, string NewStatus, int NewStatusChoiceArtifactId)>> GetWorkspaceStatusUpdates(
+        private Task<IEnumerable<(int BillingWorkspaceArtifactId, string CurrentStatus, string NewStatus, int NewStatusChoiceArtifactId)>> GetWorkspaceStatusUpdates(
             List<EddsWorkspaces> eddsWorkspaces,
             List<BillingWorkspaces> billingWorkspaces)
         {
@@ -346,7 +333,123 @@ namespace LTASBM.Agent.Managers
                 }
             }
 
-            return updates;
+            return Task.FromResult<IEnumerable<(int, string, string, int)>>(updates);
+        }
+
+        private IEnumerable<EddsUsers> GetNewUsersForBilling(
+            List<EddsUsers> eddsUsers,
+            List<BillingUsers> billingUsers)
+            => eddsUsers
+            .Where(edds =>
+            !billingUsers.Any(billing =>
+                billing.BillingUserEddsArtifactId == edds.EddsUserArtifactId))
+            .ToList();
+
+        private IEnumerable<(int BillingMatterArtifactId, int CurrentClientArtifactId, int NewClientArtifactId)> GetMatterClientMismatch(
+            List<EddsMatters> eddsMatters,
+            List<BillingMatters> billingMatters)
+            => billingMatters
+                .Where(b => b.BillingMatterEDDSClientArtifactID != 0)  // Filter out zero client IDs
+                .Join(
+                    eddsMatters,
+                    billing => billing.BillingEddsMatterArtifactId,
+                    edds => edds.EddsMatterArtifactId,
+                    (billing, edds) => new
+                    {
+                        billing.BillingMatterArtficatId,
+                        CurrentClientId = billing.BillingMatterEDDSClientArtifactID,
+                        NewClientEddsArtifactId = edds.EddsMatterClientEDDSArtifactID
+                    })
+                .Where(result =>
+                    result.CurrentClientId != result.NewClientEddsArtifactId &&
+                    result.CurrentClientId != 0 &&    // Additional checks to match SQL
+                    result.NewClientEddsArtifactId != 0)
+                .Select(result => (
+                    result.BillingMatterArtficatId,
+                    result.CurrentClientId,
+                    result.NewClientEddsArtifactId))
+                .ToList();
+
+        private IEnumerable<(int BillingWorkspaceArtifactId, int CurrentMatterArtifactId, int NewMatterArtifactId)> GetWorkspaceMatterMismatch(
+            List<EddsWorkspaces> eddsWorkspaces,
+            List<BillingWorkspaces> billingWorkspaces)
+            => billingWorkspaces
+                .Where(b => b.BillingWorkspaceMatterArtifactId != 0)  // Filter out zero matter IDs
+                .Join(
+                    eddsWorkspaces,
+                    billing => billing.BillingWorkspaceEddsArtifactId,  // Join on EDDS ArtifactId
+                    edds => edds.EddsWorkspaceArtifactId,
+                    (billing, edds) => new
+                    {
+                        billing.BillingWorkspaceArtifactId,            // This is what we want to return
+                        CurrentMatterEDDSId = billing.BillingWorkspaceMatterEddsArtifactId,  // Current matter ID in billing
+                        NewMatterEDDSArtifactId = edds.EddsWorkspaceMatterArtifactId    // New matter ID from EDDS
+                    })
+                .Where(result =>
+                    result.CurrentMatterEDDSId != result.NewMatterEDDSArtifactId &&  // Only where they don't match
+                    result.CurrentMatterEDDSId != 0 &&
+                    result.NewMatterEDDSArtifactId != 0)
+                .Select(result => (
+                    result.BillingWorkspaceArtifactId,     // Return billing workspace ID
+                    result.CurrentMatterEDDSId,                // Current matter ID in billing
+                    result.NewMatterEDDSArtifactId))           // New matter ID from EDDS
+                .ToList();
+
+        private IEnumerable<(int BillingUserId, string CurrentEmail, string NewEmail)> GetUserEmailMismatches(
+           List<EddsUsers> eddsUsers,
+           List<BillingUsers> billingUsers)
+        {
+            return billingUsers
+                .Join(
+                    eddsUsers,
+                    billing => billing.BillingUserEddsArtifactId,
+                    edds => edds.EddsUserArtifactId,
+                    (billing, edds) => new {
+                        billing.BillingUserArtifactId,
+                        CurrentEmail = billing.BillingUserEmailAddress,
+                        NewEmail = edds.EddsUserEmailAddress
+                    })
+                .Where(x => !string.Equals(x.CurrentEmail, x.NewEmail, StringComparison.OrdinalIgnoreCase))
+                .Select(x => (x.BillingUserArtifactId, x.CurrentEmail, x.NewEmail))
+                .ToList();
+        }
+
+        private IEnumerable<(int BillingUserId, string CurrentFirstName, string NewFirstName)> GetUserFirstNameMismatches(
+            List<EddsUsers> eddsUsers,
+            List<BillingUsers> billingUsers)
+        {
+            return billingUsers
+                .Join(
+                    eddsUsers,
+                    billing => billing.BillingUserEddsArtifactId,
+                    edds => edds.EddsUserArtifactId,
+                    (billing, edds) => new {
+                        billing.BillingUserArtifactId,
+                        CurrentFirstName = billing.BillingUserFirstName,
+                        NewFirstName = edds.EddsUserFirstName
+                    })
+                .Where(x => !string.Equals(x.CurrentFirstName, x.NewFirstName, StringComparison.OrdinalIgnoreCase))
+                .Select(x => (x.BillingUserArtifactId, x.CurrentFirstName, x.NewFirstName))
+                .ToList();
+        }
+
+        private IEnumerable<(int BillingUserId, string CurrentLastName, string NewLastName)> GetUserLastNameMismatches(
+            List<EddsUsers> eddsUsers,
+            List<BillingUsers> billingUsers)
+        {
+            return billingUsers
+                .Join(
+                    eddsUsers,
+                    billing => billing.BillingUserEddsArtifactId,
+                    edds => edds.EddsUserArtifactId,
+                    (billing, edds) => new {
+                        billing.BillingUserArtifactId,
+                        CurrentLastName = billing.BillingUserLastName,
+                        NewLastName = edds.EddsUserLastName
+                    })
+                .Where(x => !string.Equals(x.CurrentLastName, x.NewLastName, StringComparison.OrdinalIgnoreCase))
+                .Select(x => (x.BillingUserArtifactId, x.CurrentLastName, x.NewLastName))
+                .ToList();
         }
 
         private async Task NotifyClientNameUpdatesAsync(IEnumerable<(int BillingClientArtifactId, string EddsClientName)> clientNameUpdates)
@@ -362,6 +465,7 @@ namespace LTASBM.Agent.Managers
 
             await UpdateObjectValueTypeAsync(clientNameUpdates, UpdateType.ClientName);
         }
+
         private async Task NotifyClientNumberUpdatesAsync(IEnumerable<(int BillingClientArtifactId, string EddsClientName)> clientNumberUpdates)
         {
             if (!clientNumberUpdates.Any()) return;
@@ -375,8 +479,9 @@ namespace LTASBM.Agent.Managers
 
             await UpdateObjectValueTypeAsync(clientNumberUpdates, UpdateType.ClientNumber);
         }
+
         private async Task NotifyMatterNameUpdatesAsync(IEnumerable<(int BillingMatterArtifactID, string EddsMatterName)> matterNameUpdates)
-        {          
+        {
             if (matterNameUpdates.Any())
             {
                 var emailBody = new StringBuilder();
@@ -385,19 +490,20 @@ namespace LTASBM.Agent.Managers
                     _instanceSettings,
                     emailBody,
                     "Matter Name Updates Required");
-                
+
                 await UpdateObjectValueTypeAsync(matterNameUpdates, UpdateType.MatterName);
             }
         }
+
         private async Task NotifyMatterNumberUpdatesAsync(IEnumerable<(int BillingMatterArtifactID, string EddsNumberName)> matterNumberUpdates)
-        {           
+        {
             if (matterNumberUpdates.Any())
             {
                 var emailBody = new StringBuilder();
                 emailBody = MessageHandler.DataSyncNotificationEmailBody(
-                    emailBody, 
-                    matterNumberUpdates, 
-                    "Matter", 
+                    emailBody,
+                    matterNumberUpdates,
+                    "Matter",
                     UpdateType.MatterNumber.ToString());
 
                 await MessageHandler.Email.SendInternalNotificationAsync(
@@ -408,29 +514,89 @@ namespace LTASBM.Agent.Managers
                 await UpdateObjectValueTypeAsync(matterNumberUpdates, UpdateType.MatterNumber);
             }
         }
-        private async Task NotifyMatterClientObjectUpdatesAsync(IEnumerable<(int BillingMatterArtifactID, int NewClientArtifactId)> matterClientObjectUpdates)
-        {
-            if (matterClientObjectUpdates.Any()) 
-            {
-                var emailBody = new StringBuilder();
-                var convertedMatterClientObjectUpdates = matterClientObjectUpdates
-                    .Select(update => (update.BillingMatterArtifactID, update.NewClientArtifactId.ToString()))
-                    .ToList();
 
-                emailBody = MessageHandler.DataSyncNotificationEmailBody(
-                    emailBody, convertedMatterClientObjectUpdates, "Matter", UpdateType.MatterClientObject.ToString());
-            }                        
+        private async Task NotifyWorkspaceMatterUpdatesAsync(IEnumerable<(int BillingWorkspaceArtifactId, int CurrentMatterArtifactId, int NewMatterArtifactId)> workspaceMatterMismatches, 
+            List<BillingWorkspaces> billingWorkspaces, List<EddsMatters> eddsMatters, List<BillingMatters> billingMatters)
+        {
+            try
+            {
+                if (!workspaceMatterMismatches.Any()) return;
+
+                var emailBody = new StringBuilder();
+                emailBody.AppendLine("The following workspaces changes to the Workspace Matter ArtifactID mismatches:");
+                emailBody.AppendLine("<br><br>");
+                emailBody.AppendLine("<table border='1'>");
+                emailBody.AppendLine("<tr>");
+                emailBody.AppendLine("<th>Workspace ArtifactID</th>");
+                emailBody.AppendLine("<th>Workspace Name</th>");
+                emailBody.AppendLine("<th>Current Matter EDDS ArtifactID</th>");
+                emailBody.AppendLine("<th>Current Mattter Name</th>");
+                emailBody.AppendLine("<th>New Matter EDDS ArtifactID</th>");
+                emailBody.AppendLine("<th>New Mattter Name</th>");
+                emailBody.AppendLine("</tr>");
+
+                foreach (var (BillingWorkspaceArtifactId, CurrentMatterArtifactId, NewMatterArtifactId) in workspaceMatterMismatches)
+                {
+                    var workspaceName = _ltasHelper.GetWorkspaceNameByBillingWorkspaceArtifactID(
+                        BillingWorkspaceArtifactId,
+                        billingWorkspaces);
+
+                    var currentEddsMatterName = _ltasHelper.GetMatterNameByEDDSMatterArtifactId(
+                        CurrentMatterArtifactId,
+                        eddsMatters);
+
+                    var newEddsMatterName = _ltasHelper.GetMatterNameByEDDSMatterArtifactId(
+                        NewMatterArtifactId,
+                        eddsMatters);
+
+                    emailBody.AppendLine("<tr>");
+                    emailBody.AppendLine($"<td>{BillingWorkspaceArtifactId}</td>");
+                    emailBody.AppendLine($"<td>{workspaceName}</td>");
+                    emailBody.AppendLine($"<td>{CurrentMatterArtifactId}</td>");
+                    emailBody.AppendLine($"<td>{currentEddsMatterName}</td>");
+                    emailBody.AppendLine($"<td>{NewMatterArtifactId}</td>");
+                    emailBody.AppendLine($"<td>{newEddsMatterName}</td>");
+                    emailBody.AppendLine("</tr>");
+                }
+
+                emailBody.AppendLine("</table>");                
+
+                await MessageHandler.Email.SendInternalNotificationAsync(
+                    _instanceSettings,
+                    emailBody,
+                    "Workspace Matter Object mismatches");
+
+                foreach (var (BillingWorkspaceArtifactId, _, NewMatterArtifactId) in workspaceMatterMismatches)
+                {
+                    await ObjectHandler.UpdateFieldValueAsync(
+                        _objectManager,
+                        _billingManagementDatabase,
+                        BillingWorkspaceArtifactId,
+                        _ltasHelper.WorkspaceMatterNumberField,
+                        new Relativity.Services.Objects.DataContracts.RelativityObject
+                        {
+                            ArtifactID = _ltasHelper.GetMatterArifactIdByEddsMatterArtifactId(NewMatterArtifactId, billingMatters)
+                        },
+                        _ltasHelper.Logger
+                        );
+                }
+            }
+            catch (Exception ex)
+            {
+                _ltasHelper.Logger.LogError(ex, "Error handling workspace matter mismatch notification");
+                throw;
+            }
         }
 
         private async Task NotifyWorkspaceNameUpdatesAsync(IEnumerable<(int BillingWorkspaceArtifactId, string EddsWorkspaceName)> workspaceNameUpdates)
-        { 
-            if(workspaceNameUpdates.Any()) 
+        {
+            if (workspaceNameUpdates.Any())
             {
                 var emailBody = new StringBuilder();
                 emailBody = MessageHandler.DataSyncNotificationEmailBody(
-                    emailBody, 
-                    workspaceNameUpdates, 
-                    "Workspace", 
+                    emailBody,
+                    workspaceNameUpdates,
+                    "Workspace",
                     UpdateType.WorkspaceName.ToString());
 
                 await MessageHandler.Email.SendInternalNotificationAsync(
@@ -441,6 +607,7 @@ namespace LTASBM.Agent.Managers
                 await UpdateObjectValueTypeAsync(workspaceNameUpdates, UpdateType.WorkspaceName);
             }
         }
+
         private async Task NotifyWorkspaceCreatedByUpdatesAsync(IEnumerable<(int BillingWorkspaceArtifactId, string EddsWorkspaceCreatedBy)> workspaceCreatedByUpdates)
         {
             if (workspaceCreatedByUpdates.Any())
@@ -460,6 +627,7 @@ namespace LTASBM.Agent.Managers
                 await UpdateObjectValueTypeAsync(workspaceCreatedByUpdates, UpdateType.WorkspaceCreatedBy);
             }
         }
+
         private async Task NotifyWorkspaceCreatedOnUpdatesAsync(IEnumerable<(int BillingWorkspaceArtifactId, DateTime EddsWorkspaceCreatedOn)> workspaceCreatedOnUpdates)
         {
             if (workspaceCreatedOnUpdates.Any())
@@ -482,10 +650,11 @@ namespace LTASBM.Agent.Managers
                     _instanceSettings,
                     emailBody,
                     "Workspace CreatedOn Updates Required");
-               
+
                 await UpdateObjectDateTimeTypeAsync(workspaceCreatedOnUpdates, UpdateType.WorkspaceCreatedOn);
             }
         }
+
         private async Task NotifyWorkspaceCaseTeamUpdatesAsync(IEnumerable<(int BillingWorkspaceArtifactId, string EddsWorkspaceCaseTeam)> workspaceCaseTeamUpdates)
         {
             if (workspaceCaseTeamUpdates.Any())
@@ -505,6 +674,7 @@ namespace LTASBM.Agent.Managers
                 await UpdateObjectValueTypeAsync(workspaceCaseTeamUpdates, UpdateType.WorkspaceCaseTeam);
             }
         }
+
         private async Task NotifyWorkspaceAnalystUpdatesAsync(IEnumerable<(int BillingWorkspaceArtifactId, string EddsWorkspaceAnalyst)> workspaceAnalystUpdates)
         {
             if (workspaceAnalystUpdates.Any())
@@ -525,6 +695,127 @@ namespace LTASBM.Agent.Managers
             }
         }
 
+        private async Task UpdateUserEmailMismatchAsync(IEnumerable<(int BillingUserId, string CurrentEmail, string NewEmail)> userEmailMismatch)
+        {
+            if (!userEmailMismatch.Any()) return;
+
+            foreach (var (BillingUserId, _, NewEmail) in userEmailMismatch)
+            {
+                await ObjectHandler.UpdateFieldValueAsync(
+                    _objectManager,
+                    _billingManagementDatabase,
+                    BillingUserId,
+                    _ltasHelper.UserEmailAddressField,
+                    NewEmail,
+                    _ltasHelper.Logger);
+            }
+        }
+
+        private async Task UpdateUserEmailFirstNameMismatchAsync(IEnumerable<(int BillingUserId, string CurrentFirstName, string NewFirstName)> userFirstNameMismatch)
+        {
+            if(!userFirstNameMismatch.Any()) return;
+
+            StringBuilder sb = new StringBuilder();
+            sb.Append($"{userFirstNameMismatch.Count()} - User billing first Names to update");
+            await MessageHandler.Email.SendInternalNotificationAsync(_instanceSettings,sb, "debug - firstname user count");
+
+            foreach (var (BillingUserId, _, NewFirstName) in userFirstNameMismatch)
+            {
+                await ObjectHandler.UpdateFieldValueAsync(
+                    _objectManager,
+                    _billingManagementDatabase,
+                    BillingUserId,
+                    _ltasHelper.UserFirstNameField,
+                    NewFirstName,
+                    _ltasHelper.Logger);
+            }
+        }
+
+        private async Task UpdateUserEmailLastNameMismatch(IEnumerable<(int BillingUserId, string CurrentLastName, string NewLastName)> userLastNameMismatch) 
+        {
+            if (!userLastNameMismatch.Any()) return;
+
+            foreach (var (BillingUserId, _, NewLastName) in userLastNameMismatch)
+            {
+                await ObjectHandler.UpdateFieldValueAsync(
+                    _objectManager,
+                    _billingManagementDatabase,
+                    BillingUserId,
+                    _ltasHelper.UserLastNameField,
+                    NewLastName,
+                    _ltasHelper.Logger);
+            }
+        }
+
+        private async Task NotifyMatterClientMismatchAsync(
+            IEnumerable<(int BillingMatterArtifactId, int CurrentClientArtifactId, int NewClientEddsArtifactId)> matterClientUpdates)
+        {
+            if (!matterClientUpdates.Any()) return;
+
+            var emailBody = new StringBuilder();
+            emailBody.AppendLine("The following matters have client mismatches between EDDS and Billing:");
+            emailBody.AppendLine("<table border='1' style='border-collapse: collapse;'>");
+            emailBody.AppendLine("<tr style='background-color: #f2f2f2;'>");
+            emailBody.AppendLine("<th style='padding: 8px;'>Matter ArtifactID</th>");
+            emailBody.AppendLine("<th style='padding: 8px;'>Current Client ArtifactID</th>");
+            emailBody.AppendLine("<th style='padding: 8px;'>New Client EDDS ArtifactID</th>");
+            emailBody.AppendLine("</tr>");
+
+            foreach (var (BillingMatterArtifactId, CurrentClientArtifactId, NewClientEddsArtifactId) in matterClientUpdates)
+            {
+                emailBody.AppendLine("<tr>");
+                emailBody.AppendLine($"<td style='padding: 8px;'>{BillingMatterArtifactId}</td>");
+                emailBody.AppendLine($"<td style='padding: 8px;'>{CurrentClientArtifactId}</td>");
+                emailBody.AppendLine($"<td style='padding: 8px;'>{NewClientEddsArtifactId}</td>");
+                emailBody.AppendLine("</tr>");
+            }
+
+            emailBody.AppendLine("</table>");
+    
+            await MessageHandler.Email.SendInternalNotificationAsync(
+                _instanceSettings,
+                emailBody,
+                "Matter Client Mismatch Updates");
+
+            // Update the records
+            try 
+            {
+                foreach(var (BillingMatterArtifactId, CurrentClientArtifactId, NewClientEddsArtifactId) in matterClientUpdates)
+                {
+                    await ObjectHandler.UpdateFieldValueAsync(
+                        _objectManager,
+                        _billingManagementDatabase,
+                        BillingMatterArtifactId,
+                        _ltasHelper.MatterClientObjectField,
+                        new Relativity.Services.Objects.DataContracts.RelativityObjectRef
+                        {
+                            ArtifactID = await _ltasHelper.LookupClientArtifactID(_objectManager,_billingManagementDatabase, NewClientEddsArtifactId)
+                        },
+                        _ltasHelper.Logger);
+                }
+            }
+            catch (Exception ex)
+            {
+                _ltasHelper.Logger.LogError(ex, "Error updating matter client references");
+                throw;
+            }
+        }
+
+        private async Task CreateNewUserAsync(IEnumerable<EddsUsers> newUsersToBillingReceipients)
+        {
+            foreach (var user in newUsersToBillingReceipients)
+            {
+                await ObjectHandler.CreateNewUserAsync(
+                    _objectManager,
+                    _billingManagementDatabase,
+                    user.EddsUserFirstName,
+                    user.EddsUserLastName,
+                    user.EddsUserEmailAddress,
+                    user.EddsUserArtifactId,
+                    _ltasHelper.Logger,
+                    _ltasHelper.Helper);
+            }
+        }
 
         private async Task UpdateObjectValueTypeAsync(
             IEnumerable<(int BillingArtifactId, string EddsValue)> updates, 
@@ -583,42 +874,7 @@ namespace LTASBM.Agent.Managers
                 throw;
             }
         }
-
-        private async Task UpdateObjectObjectTypeAsync(
-            IEnumerable<(int BillingMatterArtifactID, int NewClientArtifactId)> updates,
-            UpdateType updateType)
-        {
-            try 
-            {
-                foreach(var (BillingArtifactId, ObjectValue) in updates) 
-                {
-                    Guid fieldGuid;
-                    switch(updateType) 
-                    {
-                        case UpdateType.MatterClientObject:
-                            fieldGuid = _ltasHelper.MatterClientObjectField; 
-                            break;
-                        default:
-                            throw new ArgumentException($"{updateType} is not supported.");
-                    }
-                    await ObjectHandler.UpdateFieldValueAsync(
-                        _objectManager,
-                        _billingManagementDatabase,
-                        BillingArtifactId,
-                        fieldGuid,
-                        new Relativity.Services.Objects.DataContracts.RelativityObjectRef
-                        {
-                            ArtifactID = ObjectValue 
-                        },
-                        _ltasHelper.Logger);
-                }
-            }
-            catch (Exception ex) 
-            {
-                _ltasHelper.Logger.LogError(ex, "Error updating {UpdateType}", updateType);
-                throw;
-            }
-        }
+      
 
         private async Task UpdateObjectDateTimeTypeAsync(
             IEnumerable<(int BillingArtifactId, DateTime EddsValue)> updates,
@@ -698,8 +954,7 @@ namespace LTASBM.Agent.Managers
                             new Relativity.Services.Objects.DataContracts.ChoiceRef
                             {
                                 ArtifactID = NewStatusChoiceArtifactId
-                            },
-                            true,
+                            },                            
                             _ltasHelper.Logger);
                     }
                     catch (Exception ex)
@@ -717,5 +972,6 @@ namespace LTASBM.Agent.Managers
                 throw;
             }
         }
+
     }
 }

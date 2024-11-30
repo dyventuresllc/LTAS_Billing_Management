@@ -27,5 +27,6 @@ namespace LTASBM.Agent.Models
         public string BillingWorkspaceAnalyst { get; set; } = null;
         public string BillingWorkspaceCaseTeam { get; set; } = null;
         public string BillingStatusName { get; set; } = null;
+        public int BillingWorkspaceMatterEddsArtifactId { get; set; }
     }
 }

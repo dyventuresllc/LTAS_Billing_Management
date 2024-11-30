@@ -67,6 +67,7 @@ namespace LTASBM.Agent.Handlers
                 return null;
             }           
         }
+
         public static async Task<CreateResult>CreateNewMatterAsync(
             IObjectManager objectManager, 
             int workspaceArtifactId, 
@@ -257,6 +258,77 @@ namespace LTASBM.Agent.Handlers
             }
         }
 
+        public static async Task<CreateResult> CreateNewUserAsync(
+            IObjectManager objectManager,
+            int workspaceArtifactId,
+            string userFirstNameValue,
+            string userLastNameValue,
+            string userEmailAddress,
+            int userEddsArtifactId,
+            IAPILog logger,
+            IHelper helper)
+        {
+            var ltasHelper = new LTASBMHelper(helper, logger);
+
+            try
+            {
+                var createRequest = new CreateRequest
+                {
+                    ObjectType = new ObjectTypeRef { Guid = ltasHelper.UserObjectType },
+                    FieldValues = new List<FieldRefValuePair>
+                    {
+                        new FieldRefValuePair
+                        {
+                            Field = new FieldRef
+                            {
+                                Guid = ltasHelper.UserFirstNameField
+                            },
+                            Value = userFirstNameValue
+                        },
+                        new FieldRefValuePair
+                        {
+                            Field = new FieldRef
+                            {
+                                Guid = ltasHelper.UserLastNameField
+                            },
+                            Value= userLastNameValue
+                        },
+                        new FieldRefValuePair
+                        {
+                            Field = new FieldRef
+                            {
+                                Guid = ltasHelper.UserEmailAddressField
+                            },
+                            Value = userEmailAddress
+                        },
+                        new FieldRefValuePair
+                        {
+                            Field = new FieldRef
+                            {
+                                Guid = ltasHelper.UserEddsArtifactIdField
+                            },
+                            Value = userEddsArtifactId
+                        },
+                        new FieldRefValuePair
+                        {
+                            Field = new FieldRef
+                            {
+                                Guid = ltasHelper.UserVisibleField
+                            },
+                            Value = 1
+                        }
+                    }
+                };
+                return await objectManager.CreateAsync(workspaceArtifactId, createRequest);
+            }
+            catch (Exception ex)
+            {
+                string errorMessage = ex.InnerException != null ? String.Concat(ex.InnerException.Message, "---", ex.StackTrace) : String.Concat(ex.Message, "---", ex.StackTrace);
+                logger.ForContext<ObjectHandler>().LogError($"{errorMessage}");
+                return null;
+            }
+        }
+
         public static async Task<UpdateResult> UpdateFieldValueAsync(
             IObjectManager objectManager, 
             int workspaceArtifactId,
@@ -302,7 +374,7 @@ namespace LTASBM.Agent.Handlers
             int workspaceArtifactId,
             int objectArtifactId,
             Guid fieldGuid,
-            int relatedObjectArtifactId,            
+            RelativityObjectRef relatedObjectArtifactId,            
             IAPILog logger)
         {           
             try
@@ -342,8 +414,7 @@ namespace LTASBM.Agent.Handlers
             int workspaceArtifactId,
             int objectArtifactId,
             Guid fieldGuid,
-            ChoiceRef choiceArtifactId,
-            bool isChoice,
+            ChoiceRef choiceArtifactId,            
             IAPILog logger)
         {           
             try
@@ -375,6 +446,47 @@ namespace LTASBM.Agent.Handlers
                     String.Concat(ex.Message, "---", ex.StackTrace);
                 logger.ForContext<ObjectHandler>().LogError($"{errorMessage}");
                 return null;
+            }
+        }
+
+        public static async Task<QueryResult> WorkspacesDeletedNoDeletedDate(
+            IObjectManager objectManager, 
+            int workspaceArtifactId, 
+            Guid workspaceObjectType, 
+            Guid workspaceEddsArtifactIdField,
+            Guid workspaceNameField,
+            Guid workspaceStatusField,
+            Guid workspaceCreatedByField,
+            Guid workspaceCreatedOnField,
+            IAPILog logger
+            )
+        {
+            try
+            {
+                var QueryRequest = new QueryRequest
+                {
+                    ObjectType = new ObjectTypeRef
+                    {
+                        Guid = workspaceObjectType
+                    },
+                    Fields = new FieldRef[]
+                    {
+                        new FieldRef { Name = "ArtifactId"},
+                        new FieldRef { Guid = workspaceEddsArtifactIdField },
+                        new FieldRef { Guid = workspaceNameField },
+                        new FieldRef { Guid = workspaceStatusField },
+                        new FieldRef { Guid = workspaceCreatedByField },
+                        new FieldRef { Guid = workspaceCreatedOnField }
+                    },
+                    Condition = $"(('Case Status' == CHOICE 1068674) AND (NOT 'Status: Deleted Date' ISSET))"
+                };
+                return await objectManager.QueryAsync(workspaceArtifactId, QueryRequest, 0, 10000);
+            }
+            catch (Exception ex)
+            {
+                logger.ForContext<ObjectHandler>()
+                       .LogError(ex, $"Error checking for workspaces missing deleted date");
+                throw;
             }
         }
     }
