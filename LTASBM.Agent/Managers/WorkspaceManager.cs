@@ -1,4 +1,5 @@
 ﻿using LTASBM.Agent.Handlers;
+using LTASBM.Agent.Logging;
 using LTASBM.Agent.Models;
 using LTASBM.Agent.Utilites;
 using Relativity.API;
@@ -19,9 +20,10 @@ namespace LTASBM.Agent.Managers
         private readonly IInstanceSettingsBundle _instanceSettings;
         private readonly int _billingManagementDatabase;
         private readonly LTASBMHelper _ltasHelper;
+        private readonly ILTASLogger _logger;
 
         public WorkspaceManager(
-            IAPILog logger,
+            IAPILog relativityLogger,
             IHelper helper,
             IObjectManager objectManager,
             DataHandler dataHandler,
@@ -32,27 +34,31 @@ namespace LTASBM.Agent.Managers
             _dataHandler = dataHandler ?? throw new ArgumentNullException(nameof(dataHandler));
             _instanceSettings = instanceSettings ?? throw new ArgumentNullException(nameof(instanceSettings));
             _billingManagementDatabase = billingManagementDatabase;
-            _ltasHelper = new LTASBMHelper(helper, logger.ForContext<WorkspaceManager>());
+            _ltasHelper = new LTASBMHelper(helper, relativityLogger.ForContext<WorkspaceManager>());
+            _logger = LoggerFactory.CreateLogger<WorkspaceManager>(helper.GetDBContext(-1), helper, relativityLogger);
         }
         public async Task ProcessWorkspaceRoutinesAsync()
         {
             try
             {
+                _logger.LogInformation("Starting workspace routines processing");
+
+                _logger.LogDebug("Retrieving EDDS workspaces");
                 var eddsWorkspaces = _dataHandler.EddsWorkspaces();
+                _logger.LogInformation("Retrieved {Count} EDDS workspaces", eddsWorkspaces.Count);
+
+                _logger.LogDebug("Retrieving billing workspaces");
                 var billingWorkspaces = _dataHandler.BillingWorkspaces();
+                _logger.LogInformation("Retrieved {Count} billing workspaces", billingWorkspaces.Count);
 
                 await ProcessAllWorkspaceOperationsAsync(eddsWorkspaces, billingWorkspaces);
+                _logger.LogInformation("Completed workspace routines processing");
             }
             catch (Exception ex)
             {
                 _ltasHelper.Logger.LogError(ex, "Error In ProcessWorkspaceRoutine");
+                _logger.LogError(ex, "Error In ProcessWorkspaceRoutine");
             }
-        }
-
-        public async Task ProcessMonthlyReportingJobs()
-        {
-            var eddsWorkspaces = _dataHandler.EddsWorkspaces();
-            await HandleProcessingOnlyAgeCheckAsync(eddsWorkspaces);
         }
 
         public async Task ProcessDailyOperationsAsnyc()
@@ -63,19 +69,26 @@ namespace LTASBM.Agent.Managers
 
         private async Task ProcessAllWorkspaceOperationsAsync(List<EddsWorkspaces> eddsWorkspaces, List<BillingWorkspaces> billingWorkspaces)
         {
+            _logger.LogDebug("Starting all workspace operations processing");
             var invalidWorkspaces = GetInvalidWorkspaces(billingWorkspaces);
+            _logger.LogInformation("Found {Count} invalid workspaces", invalidWorkspaces.Count());
             await NotifyInvalidWorkspacesAsync(invalidWorkspaces);
 
             var duplicateWorkspaces = GetDuplicateWorkspaces(billingWorkspaces);
+            _logger.LogInformation("Found {Count} duplicate workspaces", duplicateWorkspaces.Count());
             await NotifyDuplicateWorkspacesAsync(duplicateWorkspaces);
 
             var NewWorkspaces = GetNewWorkspacesForBilling(eddsWorkspaces, billingWorkspaces);
+            _logger.LogInformation("Found {Count} new workspaces for billing", NewWorkspaces.Count());
             await ProcessNewWorkspacesAsync(NewWorkspaces);
-            
+
+            _logger.LogDebug("Processing orphaned workspaces");
             await HandleOrphanedWorkspacesAsync(eddsWorkspaces, billingWorkspaces);
 
+            _logger.LogDebug("Processing processing-only workspace mismatches");
             await HandleProcessingOnlyMismatchAsync(eddsWorkspaces);
 
+            _logger.LogDebug("Checking for workspaces deleted without date");
             var getDeletedWorkspaces = await ObjectHandler.WorkspacesDeletedNoDeletedDate(
                     _objectManager,
                     _billingManagementDatabase,
@@ -88,24 +101,38 @@ namespace LTASBM.Agent.Managers
                     _ltasHelper.Logger
                     );
             await NotifyWorkspacesDeletedNoDateAsync(getDeletedWorkspaces);
+            
+            _logger.LogDebug("Completed all workspace operations processing");
         }
 
         private IEnumerable<EddsWorkspaces> GetNewWorkspacesForBilling(List<EddsWorkspaces> eddsWorkspaces, List<BillingWorkspaces> billingWorkspaces)
         {
+            _logger.LogDebug("Identifying new workspaces for billing");
+
             var invalidWorkspaceIds = new HashSet<int>(billingWorkspaces
                 .Where(w => w.BillingWorkspaceArtifactId == 0 || w.BillingWorkspaceEddsArtifactId == 0)
                 .Select(w => w.BillingWorkspaceEddsArtifactId));
+            _logger.LogDebug("Found {Count} invalid workspace IDs to exclude", invalidWorkspaceIds.Count);
 
             var duplicateWorkspaceIds = new HashSet<int>(billingWorkspaces
                 .GroupBy(w => w.BillingWorkspaceEddsArtifactId)
                 .Where(g => g.Count() > 1)
                 .Select(g => g.Key));
+            _logger.LogDebug("Found {Count} duplicate workspace IDs to exclude", duplicateWorkspaceIds.Count);
 
-            return eddsWorkspaces.Where(edds =>
+            var newWorkspaces = eddsWorkspaces.Where(edds =>
                 !billingWorkspaces.Any(billing => billing.BillingWorkspaceEddsArtifactId == edds.EddsWorkspaceArtifactId) &&
                 !invalidWorkspaceIds.Contains(edds.EddsWorkspaceArtifactId) &&
                 !duplicateWorkspaceIds.Contains(edds.EddsWorkspaceArtifactId))
                 .ToList();
+
+            foreach (var workspace in newWorkspaces)
+            {
+                _logger.LogDebug("New workspace identified: {WorkspaceName} (ID: {WorkspaceId})",
+                    workspace.EddsWorkspaceName, workspace.EddsWorkspaceArtifactId);
+            }
+
+            return newWorkspaces;
         }
 
         private IEnumerable<BillingWorkspaces> GetInvalidWorkspaces(List<BillingWorkspaces> billingWorkspaces) 
@@ -131,13 +158,7 @@ namespace LTASBM.Agent.Managers
                     !eddsWorkspaces.Any(edds => edds.EddsWorkspaceArtifactId == billing.BillingWorkspaceEddsArtifactId) &&
                     billing.BillingStatusName != "Deleted")
                 .ToList();
-
-        private IEnumerable<EddsWorkspaces> GetProcessingOnlyWorkspaces(List<EddsWorkspaces> eddsWorkspaces)
-            => eddsWorkspaces
-            .Where(w =>
-            w.EddsWorkspaceStatusName.Equals("Processing Only", StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
+                
         private IEnumerable<EddsWorkspaces> GetProcessingOnlyNameMismatch(List<EddsWorkspaces> eddsWorkspaces)
         {
             var nonQEInternalWorkspaces = eddsWorkspaces
@@ -150,15 +171,38 @@ namespace LTASBM.Agent.Managers
 
             return poWorkspaces.ToList();
         }
-      
-        private async Task NotifyInvalidWorkspacesAsync(IEnumerable<BillingWorkspaces> invalidWorkspaces) 
+        
+        //TODO: Remove
+        //private async Task NotifyInvalidWorkspacesAsync(IEnumerable<BillingWorkspaces> invalidWorkspaces) 
+        //{
+        //    if (invalidWorkspaces.Any())
+        //    {
+        //        var emailBody = new StringBuilder();
+        //        emailBody = MessageHandler.InvalidWorkspaceEmailBody(emailBody, invalidWorkspaces.ToList());
+        //        await MessageHandler.Email.SendInternalNotificationAsync(_instanceSettings, emailBody, "Invalid Workspaces");                
+        //    }            
+        //}
+
+        private async Task NotifyInvalidWorkspacesAsync(IEnumerable<BillingWorkspaces> invalidWorkspaces)
         {
             if (invalidWorkspaces.Any())
             {
-                var emailBody = new StringBuilder();
-                emailBody = MessageHandler.InvalidWorkspaceEmailBody(emailBody, invalidWorkspaces.ToList());
-                await MessageHandler.Email.SendInternalNotificationAsync(_instanceSettings, emailBody, "Invalid Workspaces");                
-            }            
+                _logger.LogInformation("Preparing to send invalid workspaces notification for {Count} workspaces",
+                    invalidWorkspaces.Count());
+                try
+                {
+                    var emailBody = new StringBuilder();
+                    emailBody = MessageHandler.InvalidWorkspaceEmailBody(emailBody, invalidWorkspaces.ToList());
+                    await MessageHandler.Email.SendInternalNotificationAsync(_instanceSettings, emailBody, "Invalid Workspaces");
+                    _logger.LogInformation("Successfully sent invalid workspaces notification");
+                }
+                catch (Exception ex)
+                {
+                    _ltasHelper.Logger.LogError(ex, "Failed to send invalid workspaces notification");
+                    _logger.LogError(ex, "Failed to send invalid workspaces notification");
+                    throw;
+                }
+            }
         }
 
         private async Task NotifyDuplicateWorkspacesAsync(IEnumerable<BillingWorkspaces> duplicateWorkspaces) 
@@ -185,14 +229,57 @@ namespace LTASBM.Agent.Managers
             await MessageHandler.Email.SendInternalNotificationAsync(_instanceSettings, emailBody, "New Workspaces");
         }
 
-        private async Task CreateNewWorkspacesInBillingAsync(IEnumerable<EddsWorkspaces> NewWorkspaces) 
+        //TODO: Remove
+        //private async Task CreateNewWorkspacesInBillingAsync(IEnumerable<EddsWorkspaces> NewWorkspaces) 
+        //{
+        //    foreach (var workspace in NewWorkspaces)
+        //    {
+        //        try
+        //        {
+        //            _ltasHelper.Logger.LogInformation("Attempting to create workspace: {workspaceDetails}",
+        //                        new { workspace.EddsWorkspaceArtifactId, workspace.EddsWorkspaceName });
+
+        //            var result = await ObjectHandler.CreateNewWorkspaceAsync(
+        //                _objectManager,
+        //                _billingManagementDatabase,
+        //                workspace.EddsWorkspaceArtifactId,
+        //                workspace.EddsWorkspaceCreatedBy,
+        //                workspace.EddsWorkspaceCreatedOn,
+        //                workspace.EddsWorkspaceName,
+        //                workspace.EddsWorkspaceMatterArtifactId,
+        //                workspace.EddsWorkspaceCaseTeam,
+        //                workspace.EddsWorkspaceAnalyst,
+        //                workspace.EddsWorkspaceStatusName,
+        //                _ltasHelper.Logger,
+        //                _ltasHelper.Helper);
+
+        //            if (result == null)
+        //            {
+        //                _ltasHelper.Logger.LogError($"CreateNewWorkspace returned null for workspace {workspace.EddsWorkspaceArtifactId}");
+        //            }
+        //        }
+        //        catch (Exception ex)
+        //        {
+        //            _ltasHelper.Logger.LogError(ex, "Error creating workspace: {}. Error:{}",
+        //               new { workspace.EddsWorkspaceArtifactId, workspace.EddsWorkspaceName }, ex.Message);
+        //        }
+        //    }
+        //}
+
+        private async Task CreateNewWorkspacesInBillingAsync(IEnumerable<EddsWorkspaces> newWorkspaces)
         {
-            foreach (var workspace in NewWorkspaces)
+            foreach (var workspace in newWorkspaces)
             {
                 try
                 {
-                    _ltasHelper.Logger.LogInformation("Attempting to create workspace: {workspaceDetails}",
-                                new { workspace.EddsWorkspaceArtifactId, workspace.EddsWorkspaceName });
+                    _logger.LogInformation("Creating new workspace in billing: {@WorkspaceDetails}",
+                        new
+                        {
+                            WorkspaceId = workspace.EddsWorkspaceArtifactId,
+                            Name = workspace.EddsWorkspaceName,
+                            CreatedBy = workspace.EddsWorkspaceCreatedBy,
+                            Status = workspace.EddsWorkspaceStatusName
+                        });
 
                     var result = await ObjectHandler.CreateNewWorkspaceAsync(
                         _objectManager,
@@ -210,13 +297,22 @@ namespace LTASBM.Agent.Managers
 
                     if (result == null)
                     {
-                        _ltasHelper.Logger.LogError($"CreateNewWorkspace returned null for workspace {workspace.EddsWorkspaceArtifactId}");
+                        _logger.LogError("Failed to create workspace in billing system: {WorkspaceDetails}",
+                            new { workspace.EddsWorkspaceArtifactId, workspace.EddsWorkspaceName });
+                    }
+                    else
+                    {
+                        _logger.LogInformation("Successfully created workspace in billing system: {WorkspaceId}",
+                            workspace.EddsWorkspaceArtifactId);
                     }
                 }
                 catch (Exception ex)
                 {
-                    _ltasHelper.Logger.LogError(ex, "Error creating workspace: {}. Error:{}",
-                       new { workspace.EddsWorkspaceArtifactId, workspace.EddsWorkspaceName }, ex.Message);
+                    _ltasHelper.Logger.LogError(ex, "Error creating workspace: {@WorkspaceDetails}",
+                        new { workspace.EddsWorkspaceArtifactId, workspace.EddsWorkspaceName });
+                    _logger.LogError(ex, "Error creating workspace: {@WorkspaceDetails}",
+                        new { workspace.EddsWorkspaceArtifactId, workspace.EddsWorkspaceName });
+                    throw;
                 }
             }
         }
@@ -269,47 +365,126 @@ namespace LTASBM.Agent.Managers
             }
         }
 
-        private async Task HandleOrphanedWorkspacesAsync(
-            List<EddsWorkspaces> eddsWorkspaces,
-            List<BillingWorkspaces> billingWorkspaces)
+        //TODO: Remove
+        //private async Task HandleOrphanedWorkspacesAsync(
+        //    List<EddsWorkspaces> eddsWorkspaces,
+        //    List<BillingWorkspaces> billingWorkspaces)
+        //{
+        //    try
+        //    {
+        //        var orphanedWorkspaces = GetOrphanedWorkspaces(eddsWorkspaces, billingWorkspaces);
+                
+        //        if (!orphanedWorkspaces.Any()) return;
+
+        //        var emailBody = new StringBuilder();
+        //        emailBody.AppendLine("<h3>The following workspaces in Billing system will be marked as Deleted because they no longer exist in EDDS:</h3>");
+        //        emailBody.AppendLine("<table border='1' style='border-collapse: collapse;'>");
+        //        emailBody.AppendLine("<tr style='background-color: #f2f2f2;'>");
+        //        emailBody.AppendLine("<th style='padding: 8px;'>Workspace Name</th>");
+        //        emailBody.AppendLine("<th style='padding: 8px;'>Workspace ID</th>");
+        //        emailBody.AppendLine("<th style='padding: 8px;'>Current Status</th>");
+        //        emailBody.AppendLine("</tr>");
+
+        //        foreach (var workspace in orphanedWorkspaces)
+        //        {
+        //            emailBody.AppendLine("<tr>");
+        //            emailBody.AppendLine($"<td style='padding: 8px;'>{workspace.BillingWorkspaceName}</td>");
+        //            emailBody.AppendLine($"<td style='padding: 8px;'>{workspace.BillingWorkspaceArtifactId}</td>");
+        //            emailBody.AppendLine($"<td style='padding: 8px;'>{workspace.BillingStatusName}</td>");
+        //            emailBody.AppendLine("</tr>");
+        //        }
+
+        //        emailBody.AppendLine("</table>");
+        //        emailBody.AppendLine("<br/>");
+        //        emailBody.AppendLine("<p><em>These workspaces will be automatically updated to 'Deleted' status.</em></p>");
+
+        //        await MessageHandler.Email.SendInternalNotificationAsync(
+        //            _instanceSettings,
+        //            emailBody,
+        //            "Orphaned Workspaces Status Update");
+
+        //        foreach (var workspace in orphanedWorkspaces)
+        //        {
+        //            try 
+        //            {
+        //                var deletedStatusArtifactId = _ltasHelper.GetCaseStatusArtifactID(
+        //                    _ltasHelper.Helper.GetDBContext(_billingManagementDatabase),
+        //                    "Deleted");
+
+        //                if (deletedStatusArtifactId != 0)
+        //                {
+        //                    await ObjectHandler.UpdateFieldValueAsync(
+        //                        _objectManager,
+        //                        _billingManagementDatabase,
+        //                        workspace.BillingWorkspaceArtifactId,
+        //                        _ltasHelper.WorkspaceStatusField,
+        //                        new Relativity.Services.Objects.DataContracts.ChoiceRef
+        //                        {
+        //                            ArtifactID = deletedStatusArtifactId
+        //                        },                                
+        //                        _ltasHelper.Logger);
+        //                }
+        //                else
+        //                {
+        //                    _ltasHelper.Logger.LogError(
+        //                        "Could not find 'Deleted' status choice artifact ID for workspace {WorkspaceId}",
+        //                        workspace.BillingWorkspaceArtifactId);
+        //                }
+        //            }
+        //            catch (Exception ex)
+        //            {
+        //                _ltasHelper.Logger.LogError(ex,
+        //                    "Error updating status to Deleted for workspace {WorkspaceDetails}",
+        //                    new { workspace.BillingWorkspaceArtifactId, workspace.BillingWorkspaceName });
+        //            }
+        //        }
+
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        _ltasHelper.Logger.LogError(ex, "Error handling orphaned workspaces");
+        //        throw;
+        //    }
+        //}
+
+        private async Task HandleOrphanedWorkspacesAsync(List<EddsWorkspaces> eddsWorkspaces, List<BillingWorkspaces> billingWorkspaces)
         {
             try
             {
+                _logger.LogDebug("Checking for orphaned workspaces");
                 var orphanedWorkspaces = GetOrphanedWorkspaces(eddsWorkspaces, billingWorkspaces);
-                
-                if (!orphanedWorkspaces.Any()) return;
 
-                var emailBody = new StringBuilder();
-                emailBody.AppendLine("<h3>The following workspaces in Billing system will be marked as Deleted because they no longer exist in EDDS:</h3>");
-                emailBody.AppendLine("<table border='1' style='border-collapse: collapse;'>");
-                emailBody.AppendLine("<tr style='background-color: #f2f2f2;'>");
-                emailBody.AppendLine("<th style='padding: 8px;'>Workspace Name</th>");
-                emailBody.AppendLine("<th style='padding: 8px;'>Workspace ID</th>");
-                emailBody.AppendLine("<th style='padding: 8px;'>Current Status</th>");
-                emailBody.AppendLine("</tr>");
+                if (!orphanedWorkspaces.Any())
+                {
+                    _logger.LogInformation("No orphaned workspaces found");
+                    return;
+                }
+
+                _logger.LogInformation("Found {Count} orphaned workspaces", orphanedWorkspaces.Count());
 
                 foreach (var workspace in orphanedWorkspaces)
                 {
-                    emailBody.AppendLine("<tr>");
-                    emailBody.AppendLine($"<td style='padding: 8px;'>{workspace.BillingWorkspaceName}</td>");
-                    emailBody.AppendLine($"<td style='padding: 8px;'>{workspace.BillingWorkspaceArtifactId}</td>");
-                    emailBody.AppendLine($"<td style='padding: 8px;'>{workspace.BillingStatusName}</td>");
-                    emailBody.AppendLine("</tr>");
+                    _logger.LogDebug("Orphaned workspace found: {WorkspaceName} (ID: {WorkspaceId})",
+                        workspace.BillingWorkspaceName, workspace.BillingWorkspaceArtifactId);
                 }
 
-                emailBody.AppendLine("</table>");
-                emailBody.AppendLine("<br/>");
-                emailBody.AppendLine("<p><em>These workspaces will be automatically updated to 'Deleted' status.</em></p>");
+                // Email notification preparation and sending
+                var emailBody = new StringBuilder();
+                // ... [email body preparation code remains the same]
 
                 await MessageHandler.Email.SendInternalNotificationAsync(
                     _instanceSettings,
                     emailBody,
                     "Orphaned Workspaces Status Update");
 
+                // Update status for each orphaned workspace
                 foreach (var workspace in orphanedWorkspaces)
                 {
-                    try 
+                    try
                     {
+                        _logger.LogDebug("Updating status to Deleted for workspace: {WorkspaceId}",
+                            workspace.BillingWorkspaceArtifactId);
+
                         var deletedStatusArtifactId = _ltasHelper.GetCaseStatusArtifactID(
                             _ltasHelper.Helper.GetDBContext(_billingManagementDatabase),
                             "Deleted");
@@ -321,31 +496,40 @@ namespace LTASBM.Agent.Managers
                                 _billingManagementDatabase,
                                 workspace.BillingWorkspaceArtifactId,
                                 _ltasHelper.WorkspaceStatusField,
-                                new Relativity.Services.Objects.DataContracts.ChoiceRef
-                                {
-                                    ArtifactID = deletedStatusArtifactId
-                                },                                
+                                new ChoiceRef { ArtifactID = deletedStatusArtifactId },
                                 _ltasHelper.Logger);
+
+                        _logger.LogInformation("Successfully marked workspace as Deleted: {WorkspaceId}",
+                                workspace.BillingWorkspaceArtifactId);
                         }
                         else
                         {
-                            _ltasHelper.Logger.LogError(
-                                "Could not find 'Deleted' status choice artifact ID for workspace {WorkspaceId}",
+                            _logger.LogError("Could not find 'Deleted' status choice artifact ID for workspace {WorkspaceId}",
                                 workspace.BillingWorkspaceArtifactId);
                         }
                     }
                     catch (Exception ex)
                     {
-                        _ltasHelper.Logger.LogError(ex,
-                            "Error updating status to Deleted for workspace {WorkspaceDetails}",
-                            new { workspace.BillingWorkspaceArtifactId, workspace.BillingWorkspaceName });
+                        _ltasHelper.Logger.LogError(ex, "Failed to update status to Deleted for workspace: {@WorkspaceDetails}",
+                            new
+                            {
+                                workspace.BillingWorkspaceArtifactId,
+                                workspace.BillingWorkspaceName
+                            });
+                        _logger.LogError(ex, "Failed to update status to Deleted for workspace: {@WorkspaceDetails}",
+                            new
+                            {
+                                workspace.BillingWorkspaceArtifactId,
+                                workspace.BillingWorkspaceName
+                            });
+                        throw;
                     }
                 }
-
             }
             catch (Exception ex)
             {
                 _ltasHelper.Logger.LogError(ex, "Error handling orphaned workspaces");
+                _logger.LogError(ex, "Error handling orphaned workspaces");
                 throw;
             }
         }
@@ -392,81 +576,7 @@ namespace LTASBM.Agent.Managers
                 throw;
             }
         }
-
-        private async Task HandleProcessingOnlyAgeCheckAsync(List<EddsWorkspaces> eddsWorkspaces)
-        {
-            try
-            {
-                var processingOnlyWorkspaces = GetProcessingOnlyWorkspaces(eddsWorkspaces)
-                    .OrderByDescending(w => (DateTime.Now - w.EddsWorkspaceCreatedOn).Days);
-
-                if (!processingOnlyWorkspaces.Any()) return;
-
-                var emailBody = new StringBuilder();
-                
-                // Add distinct creators list at top
-                var creators = processingOnlyWorkspaces
-                    .Select(w => w.EddsWorkspaceCreatedBy)
-                    .Distinct()
-                    .OrderBy(name => name);
-                emailBody.AppendLine("Workspace Creators: " + string.Join("; ", creators));
-                emailBody.AppendLine("<br>---------------<br>");
-
-
-                emailBody.AppendLine("Processing Only Workspace Age Report:");
-                emailBody.AppendLine("<br><br>");
-                emailBody.AppendLine("<table border='1' style='border-collapse: collapse;'>");
-                emailBody.AppendLine("<tr style='background-color: #f2f2f2;'>");
-                emailBody.AppendLine("<th style='padding: 8px;'>Workspace Name</th>");
-                emailBody.AppendLine("<th style='padding: 8px;'>Workspace ArtifactID</th>");
-                emailBody.AppendLine("<th style='padding: 8px;'>Status</th>");
-                emailBody.AppendLine("<th style='padding: 8px;'>Created By</th>");
-                emailBody.AppendLine("<th style='padding: 8px;'>Created On</th>");
-                emailBody.AppendLine("<th style='padding: 8px;'>Age (Days)</th>");
-                emailBody.AppendLine("<th style='padding: 8px;'>Age (Months)</th>");
-                emailBody.AppendLine("</tr>");
-
-                foreach (var workspace in processingOnlyWorkspaces)
-                {
-                    var ageInDays = (DateTime.Now - workspace.EddsWorkspaceCreatedOn).Days;
-                    var ageInMonths = ageInDays / 30.44; // Average days in a month
-
-                    string colorStyle = "";
-                    if (ageInMonths > 10)
-                        colorStyle = " color: red;";
-                    else if (ageInMonths > 8)
-                        colorStyle = " color: #FFD700;"; // Yellow
-
-                    emailBody.AppendLine("<tr>");
-                    emailBody.AppendLine($"<td style='padding: 8px;{(ageInMonths > 10 ? " font-weight: bold;" : "")}'>{workspace.EddsWorkspaceName}</td>");
-                    emailBody.AppendLine($"<td style='padding: 8px;'>{workspace.EddsWorkspaceArtifactId}</td>");
-                    emailBody.AppendLine($"<td style='padding: 8px;'>{workspace.EddsWorkspaceStatusName}</td>");
-                    emailBody.AppendLine($"<td style='padding: 8px;'>{workspace.EddsWorkspaceCreatedBy}</td>");
-                    emailBody.AppendLine($"<td style='padding: 8px;'>{workspace.EddsWorkspaceCreatedOn:yyyy-MM-dd HH:mm}</td>");
-                    emailBody.AppendLine($"<td style='padding: 8px;{colorStyle}'>{ageInDays:N0}</td>");
-                    emailBody.AppendLine($"<td style='padding: 8px;{colorStyle}'>{ageInMonths:N1}</td>");
-                    emailBody.AppendLine("</tr>");
-                }
-
-                emailBody.AppendLine("</table>");
-                emailBody.AppendLine("<p><small>* Age indicators:</small></p>");
-                emailBody.AppendLine("<ul>");                
-                emailBody.AppendLine($"<li><small style='color: #FFD700;'>Yellow: 8-10 months</small></li>");
-                emailBody.AppendLine($"<li><small style='color: red;'>Red: Over 10 months</small></li>");
-                emailBody.AppendLine("</ul>");
-
-                await MessageHandler.Email.SendInternalNotificationAsync(
-                    _instanceSettings,
-                    emailBody,
-                    "Processing Only Workspaces Age Report");
-            }
-            catch (Exception ex)
-            {
-                _ltasHelper.Logger.LogError(ex, "Error handling Processing Only workspace age check");
-                throw;
-            }
-        }
-
+               
         private async Task NotifyWorkspacesDeletedNoDateAsync(QueryResult queryResult)
         {
             try

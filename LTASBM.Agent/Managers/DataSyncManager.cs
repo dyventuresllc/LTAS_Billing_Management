@@ -1,4 +1,5 @@
 ﻿using LTASBM.Agent.Handlers;
+using LTASBM.Agent.Logging;
 using LTASBM.Agent.Models;
 using LTASBM.Agent.Utilites;
 using Relativity.API;
@@ -18,9 +19,9 @@ namespace LTASBM.Agent.Managers
         private readonly int _billingManagementDatabase;
         private readonly LTASBMHelper _ltasHelper;
         private readonly DataHandler _dataHandler;
-
+        private readonly ILTASLogger _logger;
         public DataSyncManager(
-            IAPILog logger,
+            IAPILog relativityLogger,
             IHelper helper,
             IObjectManager objectManager,
             IInstanceSettingsBundle instanceSettings,
@@ -30,8 +31,10 @@ namespace LTASBM.Agent.Managers
             _dataHandler = dataHandler ?? throw new ArgumentNullException(nameof(dataHandler));
             _objectManager = objectManager ?? throw new ArgumentNullException(nameof(objectManager));
             _instanceSettings = instanceSettings ?? throw new ArgumentNullException(nameof(instanceSettings));
-            _ltasHelper = new LTASBMHelper(helper, logger.ForContext<DataSyncManager>());
+            _ltasHelper = new LTASBMHelper(helper, relativityLogger.ForContext<DataSyncManager>());
             _billingManagementDatabase = billingManagementDatabase;
+            _logger = LoggerFactory.CreateLogger<DataSyncManager>(helper.GetDBContext(-1), helper, relativityLogger);
+            _logger.LogInformation("DataSyncManager initialized");
         }
 
         public enum UpdateType
@@ -62,6 +65,7 @@ namespace LTASBM.Agent.Managers
                 var eddsUsers = _dataHandler.EDDSUsers();
                 var billingUsers = _dataHandler.BillingUsers();
 
+                _logger.LogInformation("Retrieved all data for sync. Processing sync operations");
                 await ProccessAllDataSyncOperationsAsync(
                     eddsClients, billingClients,
                     eddsMatters, billingMatters,
@@ -71,6 +75,8 @@ namespace LTASBM.Agent.Managers
             catch (Exception ex)
             {
                 _ltasHelper.Logger.LogError(ex, "Error In DataSyncRoutine");
+                _logger.LogError(ex, "Error In DataSyncRoutine");
+                throw;
             }
         }
 
@@ -80,53 +86,73 @@ namespace LTASBM.Agent.Managers
             List<EddsWorkspaces> eddsWorkspaces, List<BillingWorkspaces> billingWorkspaces,
             List<EddsUsers> eddsUsers, List<BillingUsers> billingUsers)
         {
+            _logger.LogInformation("Beginning all data sync operations");
+
             var clientNameUpdates = GetClientNameUpdates(eddsclients, billingClients);
+            _logger.LogInformation("Found {count} client name updates", clientNameUpdates.Count());
             await NotifyClientNameUpdatesAsync(clientNameUpdates);
 
             var clientNumberUpdates = GetClientNumberUpdates(eddsclients, billingClients);
+            _logger.LogInformation("Found {count} client number updates", clientNumberUpdates.Count());
             await NotifyClientNumberUpdatesAsync(clientNumberUpdates);
 
             var matterNameUpdates = GetMatterNameUpdates(eddsMatters, billingMatters);
+            _logger.LogInformation("Found {count} matter name updates", matterNameUpdates.Count());
             await NotifyMatterNameUpdatesAsync(matterNameUpdates);
 
             var matterNumberUpdates = GetMatterNumberUpdates(eddsMatters, billingMatters);
+            _logger.LogInformation("Found {count} matter number updates", matterNumberUpdates.Count());
             await NotifyMatterNumberUpdatesAsync(matterNumberUpdates);
 
             var workspaceNameUpdates = GetWorkspaceNameUpdates(eddsWorkspaces, billingWorkspaces);
+            _logger.LogInformation("Found {count} workspace name updates", workspaceNameUpdates.Count());
             await NotifyWorkspaceNameUpdatesAsync(workspaceNameUpdates);
 
             var workspaceCreatedByUpdates = GetWorkspaceCreatedByUpdates(eddsWorkspaces, billingWorkspaces);
+            _logger.LogInformation("Found {count} workspace created by updates", workspaceCreatedByUpdates.Count());
             await NotifyWorkspaceCreatedByUpdatesAsync(workspaceCreatedByUpdates);
 
             var workspaceCreatedOnUpdates = GetWorkspaceCreatedOnUpdates(eddsWorkspaces, billingWorkspaces);
+            _logger.LogInformation("Found {count} workspace created on updates", workspaceCreatedOnUpdates.Count());
             await NotifyWorkspaceCreatedOnUpdatesAsync(workspaceCreatedOnUpdates);
 
             var workspaceCaseTeamUpdates = GetWorkspaceCaseTeamUpdates(eddsWorkspaces, billingWorkspaces);
+            _logger.LogInformation("Found {count} workspace case team updates", workspaceCaseTeamUpdates.Count());
             await NotifyWorkspaceCaseTeamUpdatesAsync(workspaceCaseTeamUpdates);
 
             var workspaceAnalystUpdates = GetWorkspaceAnalystUpdates(eddsWorkspaces, billingWorkspaces);
+            _logger.LogInformation("Found {count} workspace analyst updates", workspaceAnalystUpdates.Count());
             await NotifyWorkspaceAnalystUpdatesAsync(workspaceAnalystUpdates);
 
             var workspaceStatusUpdates = await GetWorkspaceStatusUpdates(eddsWorkspaces, billingWorkspaces);
+            _logger.LogInformation("Found {count} workspace status updates", workspaceStatusUpdates.Count());
             await NotifyWorkspaceStatusUpdateAsync(workspaceStatusUpdates);
 
             var workspaceMatterUpdates = GetWorkspaceMatterMismatch(eddsWorkspaces, billingWorkspaces);
+            _logger.LogInformation("Found {count} workspace matter mismatches", workspaceMatterUpdates.Count());
             await NotifyWorkspaceMatterUpdatesAsync(workspaceMatterUpdates, billingWorkspaces, eddsMatters, billingMatters);            
             
             var billingRecipientsNewUser = GetNewUsersForBilling(eddsUsers, billingUsers);
+            _logger.LogInformation("Found {count} new users to create", billingRecipientsNewUser.Count());
             await CreateNewUserAsync(billingRecipientsNewUser);
 
             var matterClientUpdates = GetMatterClientMismatch(eddsMatters, billingMatters);
+            _logger.LogInformation("Found {count} matter client mismatches", matterClientUpdates.Count());
             await NotifyMatterClientMismatchAsync(matterClientUpdates);
 
             var userReportEmailAddressUpdates = GetUserEmailMismatches(eddsUsers, billingUsers);
+            _logger.LogInformation("Found {count} user email mismatches", userReportEmailAddressUpdates.Count());
             await UpdateUserEmailMismatchAsync(userReportEmailAddressUpdates);
 
             var userReportFirstNameUpdates = GetUserFirstNameMismatches(eddsUsers, billingUsers);
+            _logger.LogInformation("Found {count} user first name mismatches", userReportFirstNameUpdates.Count());
             await UpdateUserEmailFirstNameMismatchAsync(userReportFirstNameUpdates);
 
             var userReportLastnameUpdates = GetUserLastNameMismatches(eddsUsers, billingUsers);
+            _logger.LogInformation("Found {count} user last name mismatches", userReportLastnameUpdates.Count());
             await UpdateUserEmailLastNameMismatch(userReportLastnameUpdates);
+
+            _logger.LogInformation("Completed all data sync operations");
         }
 
         private IEnumerable<(int BillingClientArtifactId, string EddsClientName)> GetClientNameUpdates(
@@ -452,47 +478,114 @@ namespace LTASBM.Agent.Managers
                 .ToList();
         }
 
+        //TODO: Remove
+        //private async Task NotifyClientNameUpdatesAsync(IEnumerable<(int BillingClientArtifactId, string EddsClientName)> clientNameUpdates)
+        //{
+        //    if (!clientNameUpdates.Any()) return;
+
+        //    var emailBody = new StringBuilder();
+        //    emailBody = MessageHandler.DataSyncNotificationEmailBody(emailBody, clientNameUpdates, "Client", "Client Name");
+        //    await MessageHandler.Email.SendInternalNotificationAsync(
+        //        _instanceSettings,
+        //        emailBody,
+        //        "Client Name Updates Required");
+
+        //    await UpdateObjectValueTypeAsync(clientNameUpdates, UpdateType.ClientName);
+        //}
+
         private async Task NotifyClientNameUpdatesAsync(IEnumerable<(int BillingClientArtifactId, string EddsClientName)> clientNameUpdates)
         {
-            if (!clientNameUpdates.Any()) return;
+            if (!clientNameUpdates.Any())
+            {
+                _logger.LogInformation("No client name updates required");
+                return;
+            }
 
+            _logger.LogInformation("Processing {count} client name updates", clientNameUpdates.Count());
             var emailBody = new StringBuilder();
             emailBody = MessageHandler.DataSyncNotificationEmailBody(emailBody, clientNameUpdates, "Client", "Client Name");
+
             await MessageHandler.Email.SendInternalNotificationAsync(
                 _instanceSettings,
                 emailBody,
                 "Client Name Updates Required");
 
+            _logger.LogInformation("Starting client name field updates");
             await UpdateObjectValueTypeAsync(clientNameUpdates, UpdateType.ClientName);
         }
 
+
+        //TODO: Remove
+        //private async Task NotifyClientNumberUpdatesAsync(IEnumerable<(int BillingClientArtifactId, string EddsClientName)> clientNumberUpdates)
+        //{
+        //    if (!clientNumberUpdates.Any()) return;
+
+        //    var emailBody = new StringBuilder();
+        //    emailBody = MessageHandler.DataSyncNotificationEmailBody(emailBody, clientNumberUpdates, "Client", UpdateType.ClientNumber.ToString());
+        //    await MessageHandler.Email.SendInternalNotificationAsync(
+        //        _instanceSettings,
+        //        emailBody,
+        //        "Client Number Updates Required");
+
+        //    await UpdateObjectValueTypeAsync(clientNumberUpdates, UpdateType.ClientNumber);
+        //}
+
         private async Task NotifyClientNumberUpdatesAsync(IEnumerable<(int BillingClientArtifactId, string EddsClientName)> clientNumberUpdates)
         {
-            if (!clientNumberUpdates.Any()) return;
+            if (!clientNumberUpdates.Any())
+            {
+                _logger.LogInformation("No client number updates required");
+                return;
+            }
 
+            _logger.LogInformation("Processing {count} client number updates", clientNumberUpdates.Count());
             var emailBody = new StringBuilder();
             emailBody = MessageHandler.DataSyncNotificationEmailBody(emailBody, clientNumberUpdates, "Client", UpdateType.ClientNumber.ToString());
+
             await MessageHandler.Email.SendInternalNotificationAsync(
                 _instanceSettings,
                 emailBody,
                 "Client Number Updates Required");
 
+            _logger.LogInformation("Starting client number field updates");
             await UpdateObjectValueTypeAsync(clientNumberUpdates, UpdateType.ClientNumber);
         }
 
+        //TODO: Remove
+        //private async Task NotifyMatterNameUpdatesAsync(IEnumerable<(int BillingMatterArtifactID, string EddsMatterName)> matterNameUpdates)
+        //{
+        //    if (matterNameUpdates.Any())
+        //    {
+        //        var emailBody = new StringBuilder();
+        //        emailBody = MessageHandler.DataSyncNotificationEmailBody(emailBody, matterNameUpdates, "Matter", UpdateType.MatterName.ToString());
+        //        await MessageHandler.Email.SendInternalNotificationAsync(
+        //            _instanceSettings,
+        //            emailBody,
+        //            "Matter Name Updates Required");
+
+        //        await UpdateObjectValueTypeAsync(matterNameUpdates, UpdateType.MatterName);
+        //    }
+        //}
+
         private async Task NotifyMatterNameUpdatesAsync(IEnumerable<(int BillingMatterArtifactID, string EddsMatterName)> matterNameUpdates)
         {
-            if (matterNameUpdates.Any())
+            if (!matterNameUpdates.Any())
             {
-                var emailBody = new StringBuilder();
-                emailBody = MessageHandler.DataSyncNotificationEmailBody(emailBody, matterNameUpdates, "Matter", UpdateType.MatterName.ToString());
-                await MessageHandler.Email.SendInternalNotificationAsync(
-                    _instanceSettings,
-                    emailBody,
-                    "Matter Name Updates Required");
-
-                await UpdateObjectValueTypeAsync(matterNameUpdates, UpdateType.MatterName);
+                _logger.LogInformation("No matter name updates required");
+                return;
             }
+
+            _logger.LogInformation("Processing {count} matter name updates", matterNameUpdates.Count());
+            var emailBody = new StringBuilder();
+            emailBody = MessageHandler.DataSyncNotificationEmailBody(emailBody, matterNameUpdates, "Matter", UpdateType.MatterName.ToString());
+
+            await MessageHandler.Email.SendInternalNotificationAsync(
+                _instanceSettings,
+                emailBody,
+                "Matter Name Updates Required");
+
+            _logger.LogInformation("Starting matter name field updates");
+            await UpdateObjectValueTypeAsync(matterNameUpdates, UpdateType.MatterName);
         }
 
         private async Task NotifyMatterNumberUpdatesAsync(IEnumerable<(int BillingMatterArtifactID, string EddsNumberName)> matterNumberUpdates)
@@ -514,13 +607,19 @@ namespace LTASBM.Agent.Managers
                 await UpdateObjectValueTypeAsync(matterNumberUpdates, UpdateType.MatterNumber);
             }
         }
-
-        private async Task NotifyWorkspaceMatterUpdatesAsync(IEnumerable<(int BillingWorkspaceArtifactId, int CurrentMatterArtifactId, int NewMatterArtifactId)> workspaceMatterMismatches, 
+      
+        private async Task NotifyWorkspaceMatterUpdatesAsync(IEnumerable<(int BillingWorkspaceArtifactId, int CurrentMatterArtifactId, int NewMatterArtifactId)> workspaceMatterMismatches,
             List<BillingWorkspaces> billingWorkspaces, List<EddsMatters> eddsMatters, List<BillingMatters> billingMatters)
         {
             try
-            {
-                if (!workspaceMatterMismatches.Any()) return;
+            {                
+                if (!workspaceMatterMismatches.Any())
+                {
+                    _logger.LogInformation("No workspace matter updates required");
+                    return;
+                }
+
+                _logger.LogInformation("Processing {count} workspace matter updates", workspaceMatterMismatches.Count());
 
                 var emailBody = new StringBuilder();
                 emailBody.AppendLine("The following workspaces changes to the Workspace Matter ArtifactID mismatches:");
@@ -559,15 +658,19 @@ namespace LTASBM.Agent.Managers
                     emailBody.AppendLine("</tr>");
                 }
 
-                emailBody.AppendLine("</table>");                
+                emailBody.AppendLine("</table>");
 
                 await MessageHandler.Email.SendInternalNotificationAsync(
                     _instanceSettings,
                     emailBody,
                     "Workspace Matter Object mismatches");
+                _logger.LogInformation("Starting workspace matter field updates");
 
                 foreach (var (BillingWorkspaceArtifactId, _, NewMatterArtifactId) in workspaceMatterMismatches)
                 {
+                    _logger.LogInformation("Updating workspace {workspaceId} with new matter {matterId}",
+                        BillingWorkspaceArtifactId, NewMatterArtifactId);
+
                     await ObjectHandler.UpdateFieldValueAsync(
                         _objectManager,
                         _billingManagementDatabase,
@@ -584,6 +687,7 @@ namespace LTASBM.Agent.Managers
             catch (Exception ex)
             {
                 _ltasHelper.Logger.LogError(ex, "Error handling workspace matter mismatch notification");
+                _logger.LogError(ex, "Error handling workspace matter mismatch notification");
                 throw;
             }
         }
@@ -607,6 +711,7 @@ namespace LTASBM.Agent.Managers
                 await UpdateObjectValueTypeAsync(workspaceNameUpdates, UpdateType.WorkspaceName);
             }
         }
+
 
         private async Task NotifyWorkspaceCreatedByUpdatesAsync(IEnumerable<(int BillingWorkspaceArtifactId, string EddsWorkspaceCreatedBy)> workspaceCreatedByUpdates)
         {
@@ -697,10 +802,17 @@ namespace LTASBM.Agent.Managers
 
         private async Task UpdateUserEmailMismatchAsync(IEnumerable<(int BillingUserId, string CurrentEmail, string NewEmail)> userEmailMismatch)
         {
-            if (!userEmailMismatch.Any()) return;
+            if (!userEmailMismatch.Any())
+            {
+                _logger.LogInformation("No user email updates required");
+                return;
+            }
+            _logger.LogInformation("Processing {count} user email updates", userEmailMismatch.Count());
 
             foreach (var (BillingUserId, _, NewEmail) in userEmailMismatch)
             {
+                _logger.LogInformation("Updating user {userId} email to {newEmail}", BillingUserId, NewEmail);
+
                 await ObjectHandler.UpdateFieldValueAsync(
                     _objectManager,
                     _billingManagementDatabase,

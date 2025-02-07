@@ -8,6 +8,8 @@ using System.Text;
 using System.Linq;
 using System.Web;
 using System.Threading.Tasks;
+using System.IO;
+using System.Data;
 
 namespace LTASBM.Agent.Handlers
 {
@@ -499,6 +501,353 @@ namespace LTASBM.Agent.Handlers
             return htmlBody;
         }
 
+        public static StringBuilder SendInvoiceEmailBody(StringBuilder htmlBody, DataTable costdt, 
+            string contactFirstName, string emailToList, string emailCcList, int workspaceCount)
+        {
+            // Helper functions
+            T GetFieldValue<T>(DataRow row, string fieldName, T defaultValue = default)
+            {
+                try
+                {
+                    if (row == null || row[fieldName] == DBNull.Value)
+                        return defaultValue;
+                    if (typeof(T) == typeof(bool))
+                        return (T)(object)(row[fieldName] != DBNull.Value && Convert.ToBoolean(row[fieldName]));
+                    if (typeof(T) == typeof(decimal))
+                        return (T)(object)(row[fieldName] != DBNull.Value ? Convert.ToDecimal(row[fieldName]) : 0m);
+                    return (T)Convert.ChangeType(row[fieldName], typeof(T));
+                }
+                catch (Exception)
+                {
+                    return defaultValue;
+                }
+            }
+
+            int GetCostCodeNumber(DataRow row)
+            {
+                var costCode = GetFieldValue<string>(row, "CostCode", "");
+                if (string.IsNullOrEmpty(costCode)) return 0;
+                var numericPart = new string(costCode.Where(char.IsDigit).ToArray());
+                return int.TryParse(numericPart, out int result) ? result : 0;
+            }
+
+            // Set workspace text based on count
+            var workspaceText = workspaceCount == 1 ? "workspace" : "workspaces";
+
+            // Group data by section for Monthly Recurring Fees
+            var monthlyFeeRows = costdt.AsEnumerable()
+                .Where(row =>
+                {
+                    var code = GetCostCodeNumber(row);
+                    return code == 3200 ||                    // User Fees
+                           (code >= 3230 && code <= 3232) ||  // Review Hosting
+                           (code >= 3220 && code <= 3222);    // Repository Hosting
+                })
+                .ToList();
+
+            // Get specific fee rows
+            var userFeeRows = monthlyFeeRows.Where(row => GetCostCodeNumber(row) == 3200).ToList();
+            var reviewHostingRows = monthlyFeeRows.Where(row =>
+            {
+                var code = GetCostCodeNumber(row);
+                return code >= 3230 && code <= 3232;
+            }).ToList();
+            var repoHostingRows = monthlyFeeRows.Where(row =>
+            {
+                var code = GetCostCodeNumber(row);
+                return code >= 3220 && code <= 3222;
+            }).ToList();
+
+            // All other charges are one-time monthly fees
+            var oneTimeFeeRows = costdt.AsEnumerable()
+                .Where(row =>
+                {
+                    var code = GetCostCodeNumber(row);
+                    return !(code == 3200 ||                    // Not User Fees
+                            (code >= 3230 && code <= 3232) ||   // Not Review Hosting
+                            (code >= 3220 && code <= 3222));    // Not Repository Hosting
+                })
+                .OrderBy(row => GetFieldValue<string>(row, "CostCodeDescription"))
+                .ToList();
+
+            // Start HTML
+            htmlBody.AppendLine(@"<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            font-size: 13px; 
+            margin: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .content-wrapper {
+            padding: 20px;
+        }
+        table { 
+            width: auto;
+            min-width: 600px;
+            max-width: 800px;
+            border-collapse: collapse; 
+            margin: 15px 0; 
+        }
+        th { 
+            text-align: left;
+            padding: 6px 12px;
+            border-bottom: 1px solid #000;
+            white-space: nowrap;
+        }
+        td { 
+            padding: 6px 12px;
+            border-bottom: 1px solid #ddd;
+        }
+        .amount-cell { 
+            text-align: right;
+            white-space: nowrap;
+        }
+        .total-row {
+            font-weight: bold;
+            border-top: 1px solid #000;
+        }
+        .section-header {
+            font-weight: bold;
+            text-decoration: underline;
+            margin-top: 20px;
+            padding-left: 12px;
+        }
+        .fee-section {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 4px;
+        }
+        .monthly-fees {
+            background-color: #f8f9fa;
+        }
+        .one-time-fees {
+            background-color: #fff8e1;
+            margin-top: 30px;
+        }
+        .notes-section {
+            margin: 15px 0;
+            padding-left: 12px;
+        }
+    </style>
+</head>
+<body>
+<div class='content-wrapper'>");
+
+            // Add email headers
+            htmlBody.AppendLine($@"<p>To: {HttpUtility.HtmlEncode(emailToList)}</p>");
+            if (!string.IsNullOrWhiteSpace(emailCcList))
+            {
+                htmlBody.AppendLine($@"<p>CC: {HttpUtility.HtmlEncode(emailCcList)}</p>");
+            }
+
+            // Dear line
+            htmlBody.AppendLine($@"<p>Dear {HttpUtility.HtmlEncode(!string.IsNullOrWhiteSpace(contactFirstName) ? contactFirstName : "_____")},</p>");
+
+            // Introduction text
+            htmlBody.AppendLine($@"<p>The following outlines the monthly recurring user and hosting fees for your Relativity {workspaceText}. These charges are updated regularly to reflect changes in data volume and the number of users added or removed.</p>");
+
+            // Monthly Recurring Fees Section
+            decimal totalMonthlyFees = 0;
+            var hasMonthlyDiscounts = false;
+
+            htmlBody.AppendLine(@"<div class='fee-section monthly-fees'>");
+            htmlBody.AppendLine(@"<table>
+        <thead>
+            <tr>
+                <th>Description</th>
+                <th style='text-align: right;'>Quantity</th>
+                <th style='text-align: right;'>Rate</th>
+                <th style='text-align: right;'>Amount</th>
+            </tr>
+        </thead>
+        <tbody>");
+
+            // User Fees
+            if (userFeeRows.Any())
+            {
+                var userCount = userFeeRows.Sum(row => GetFieldValue<decimal>(row, "Quantity"));
+                var userRate = GetFieldValue<decimal>(userFeeRows.First(), "FinalRate");
+                var userAmount = Math.Ceiling(Math.Round(userFeeRows.Sum(row => GetFieldValue<decimal>(row, "BilledAmount")), 2));
+                var hasDiscount = GetFieldValue<bool>(userFeeRows.First(), "HasOverride");
+                hasMonthlyDiscounts |= hasDiscount;
+                totalMonthlyFees += userAmount;
+
+                htmlBody.AppendLine($@"<tr>
+            <td>User Fees</td>
+            <td class='amount-cell'>{userCount}</td>
+            <td class='amount-cell'>${userRate:N2}{(hasDiscount ? "*" : "")}</td>
+            <td class='amount-cell'>${userAmount:N2}</td>
+        </tr>");
+            }
+
+            // Review Hosting
+            if (reviewHostingRows.Any())
+            {
+                var reviewGB = Math.Ceiling(reviewHostingRows.Sum(row => GetFieldValue<decimal>(row, "Quantity")));
+                var reviewRate = GetFieldValue<decimal>(reviewHostingRows.First(), "FinalRate");
+                var reviewAmount = Math.Ceiling(Math.Round(reviewHostingRows.Sum(row => GetFieldValue<decimal>(row, "BilledAmount")), 2));
+                var hasDiscount = GetFieldValue<bool>(reviewHostingRows.First(), "HasOverride");
+                hasMonthlyDiscounts |= hasDiscount;
+                totalMonthlyFees += reviewAmount;
+
+                htmlBody.AppendLine($@"<tr>
+            <td>Review Hosting (Per GB)</td>
+            <td class='amount-cell'>{reviewGB:N0}</td>
+            <td class='amount-cell'>${reviewRate:N2}{(hasDiscount ? "*" : "")}</td>
+            <td class='amount-cell'>${reviewAmount:N2}</td>
+        </tr>");
+            }
+
+            // Repository Hosting
+            if (repoHostingRows.Any())
+            {
+                var repoGB = Math.Ceiling(repoHostingRows.Sum(row => GetFieldValue<decimal>(row, "Quantity")));
+                var repoRate = GetFieldValue<decimal>(repoHostingRows.First(), "FinalRate");
+                var repoAmount = Math.Ceiling(Math.Round(repoHostingRows.Sum(row => GetFieldValue<decimal>(row, "BilledAmount")), 2));
+                var hasDiscount = GetFieldValue<bool>(repoHostingRows.First(), "HasOverride");
+                hasMonthlyDiscounts |= hasDiscount;
+                totalMonthlyFees += repoAmount;
+
+                htmlBody.AppendLine($@"<tr>
+            <td>Repository (ECA) Hosting (Per GB)</td>
+            <td class='amount-cell'>{repoGB:N0}</td>
+            <td class='amount-cell'>${repoRate:N2}{(hasDiscount ? "*" : "")}</td>
+            <td class='amount-cell'>${repoAmount:N2}</td>
+        </tr>");
+            }
+
+            // Total Monthly Fees
+            htmlBody.AppendLine($@"<tr class='total-row'>
+        <td colspan='3' style='text-align: right;'>Total Monthly Fees:</td>
+        <td class='amount-cell'>${totalMonthlyFees:N2}</td>
+    </tr>");
+
+            htmlBody.AppendLine("</tbody></table>");
+
+            // Add notes within monthly fees section
+            htmlBody.AppendLine(@"<div class='notes-section'>");
+            if (userFeeRows.Any())
+            {
+                htmlBody.AppendLine($@"<p style='text-indent: 2em;'><strong>User Fees:</strong> If you wish to deactivate any user accounts, we must receive your request before close of business 
+                    on {GetLastMondayOfMonth():MMMM d, yyyy} to avoid charges in {GetNextMonth():MMMM}. The attached user report lists the active users on this matter.</p>");
+            }
+
+            if (reviewHostingRows.Any() || repoHostingRows.Any())
+            {
+                htmlBody.AppendLine($@"<p style='text-indent: 2em;'><strong>Hosting Fees:</strong> Hosting fees will continue each month unless the database is deleted or archived. 
+                    If this case is no longer active (or is expected to have a long period of inactivity), please contact us to get an estimate to archive. 
+                    Please note that larger cases may take several weeks to archive during which time the fees will continue to accrue.</p>");
+
+                //htmlBody.AppendLine($@"<p style='text-indent: 2em; margin: 0;'><strong>Hosting Fees:</strong> Hosting fees will continue each month unless the database is deleted or archived. 
+                //    If this case is no longer active (or is expected to have a long period of inactivity), please contact us to get an estimate to archive.<br/>
+                //    <span style='margin-left: 2em;'>Please note that larger cases may take several weeks to archive during which time the fees will continue to accrue.</span></p>");
+
+
+
+                htmlBody.AppendLine($@"<p style='text-indent: 2em; margin: 0; max-width: 1000px;'><strong>Hosting Fees:</strong> Hosting fees will continue each month unless the database is deleted or archived. 
+    If this case is no longer active (or is expected to have a long period of inactivity), please contact us to get an estimate to archive.<br/><span style='margin-left: 12em;'>Please note that larger cases may take several weeks to archive during which time the fees will continue to accrue.</span></p>");
+
+            }
+            htmlBody.AppendLine("</div></div>");
+
+            // Initialize one-time discounts flag before the if block
+            var hasOneTimeDiscounts = false;
+
+            // One-Time Monthly Fees section
+            if (oneTimeFeeRows.Any())
+            {
+                htmlBody.AppendLine("<br>");
+                htmlBody.AppendLine(@"<div class='fee-section one-time-fees'>");
+                htmlBody.AppendLine($@"<p>The following table outlines the one-time monthly fees associated with your Relativity {workspaceText}. 
+        These charges cover processing, imaging, and translation fees (where applicable) to support the needs of your matter.</p>");
+
+                htmlBody.AppendLine(@"<table>
+            <thead>
+                <tr>
+                    <th>Description</th>
+                    <th style='text-align: right;'>Quantity</th>
+                    <th style='text-align: right;'>Rate</th>
+                    <th style='text-align: right;'>Amount</th>
+                </tr>
+            </thead>
+            <tbody>");
+
+                foreach (var row in oneTimeFeeRows)
+                {
+                    var description = HttpUtility.HtmlEncode(GetFieldValue<string>(row, "CostCodeDescription"));
+                    var quantity = GetFieldValue<decimal>(row, "Quantity");
+                    var rate = GetFieldValue<decimal>(row, "FinalRate");
+                    var amount = Math.Ceiling(Math.Round(GetFieldValue<decimal>(row, "BilledAmount"), 2));
+                    var hasDiscount = GetFieldValue<bool>(row, "HasOverride");
+                    hasOneTimeDiscounts |= hasDiscount;
+
+                    htmlBody.AppendLine($@"<tr>
+                <td>{description}</td>
+                <td class='amount-cell'>{quantity:N0}</td>
+                <td class='amount-cell'>${rate:N2}{(hasDiscount ? "*" : "")}</td>
+                <td class='amount-cell'>${amount:N2}</td>
+            </tr>");
+                }
+
+                var totalOneTime = Math.Ceiling(Math.Round(oneTimeFeeRows.Sum(row => GetFieldValue<decimal>(row, "BilledAmount")), 2));
+                htmlBody.AppendLine($@"<tr class='total-row'>
+            <td colspan='3' style='text-align: right;'>Total One-Time Monthly Fees:</td>
+            <td class='amount-cell'>${totalOneTime:N2}</td>
+        </tr>");
+
+                htmlBody.AppendLine("</tbody></table>");
+                htmlBody.AppendLine("</div>");
+            }
+
+            // Matter Total (outside of both sections)
+            htmlBody.AppendLine(@"<div style='margin-top: 30px; padding-left: 12px;'>");
+            var grandTotal = totalMonthlyFees;
+            if (oneTimeFeeRows.Any())
+            {
+                grandTotal += Math.Ceiling(Math.Round(oneTimeFeeRows.Sum(row => GetFieldValue<decimal>(row, "BilledAmount")), 2));
+            }
+            htmlBody.AppendLine($@"<p><strong>Matter Total: ${grandTotal:N2}</strong></p>");
+
+            // Add discount note if any discounts exist
+            var hasAnyDiscounts = hasMonthlyDiscounts || (oneTimeFeeRows.Any() && hasOneTimeDiscounts);
+            if (hasAnyDiscounts)
+            {
+                htmlBody.AppendLine(@"<div class='note' style='margin-top: 15px; font-size: 12px; color: #666;'>
+            * Rate is discounted
+        </div>");
+            }
+
+            // Thank you note
+            htmlBody.AppendLine(@"<p>Thank you for choosing LTAS.</p>");            
+            htmlBody.AppendLine("<p><img class='logo-image' alt=\"\" src=\"https://i.ibb.co/DgCVxtkw/ltas-smaller.png\"/></p>");
+            htmlBody.AppendLine("</div></body></html>");
+            
+            return htmlBody;
+        }
+
+        private static DateTime GetLastMondayOfMonth()
+        {
+            var today = DateTime.Today;
+            var lastDay = new DateTime(today.Year, today.Month, DateTime.DaysInMonth(today.Year, today.Month));
+
+            while (lastDay.DayOfWeek != DayOfWeek.Monday)
+            {
+                lastDay = lastDay.AddDays(-1);
+            }
+
+            return lastDay;
+        }
+
+        private static DateTime GetNextMonth()
+        {
+            var today = DateTime.Today;
+            return new DateTime(today.Year, today.Month, 1).AddMonths(1);
+        }
+
         public class Email
         {
             static string smtpPasswordValue;
@@ -802,6 +1151,78 @@ namespace LTASBM.Agent.Handlers
                     smtpClient.UseDefaultCredentials = false;
                     smtpClient.Credentials = new NetworkCredential(smtpUserValue, smtpPasswordValue);
                     await smtpClient.SendMailAsync(emailMessage);
+                }
+            }
+
+            public static async Task SendInternalNotificationWAttachmentAsync(IInstanceSettingsBundle instanceSettingsBundle, StringBuilder htmlBody, string emailSubject, DataTable dt, string attachmentName)
+            {
+                SMTPSetting smtpPassword = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPassword" };
+                SMTPSetting smtpPort = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPPort" };
+                SMTPSetting smtpServer = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPServer" };
+                SMTPSetting smtpUser = new SMTPSetting { Section = "kCura.Notification", Name = "SMTPUserName" };
+                SMTPSetting smtpEnvironment = new SMTPSetting { Section = "Relativity.Core", Name = "RelativityInstanceURL" };
+                SMTPSetting adminEmailSetting = new SMTPSetting { Section = "LTAS Billing Management", Name = "AdminEmailAddress" };
+
+                List<SMTPSetting> smtpSettings = new List<SMTPSetting> { smtpPort, smtpServer, smtpUser, smtpPassword, smtpEnvironment, adminEmailSetting };
+
+                foreach (var smtpInstanceSettingSingle in smtpSettings)
+                {
+                    try
+                    {
+                        GetSMTPValue(smtpInstanceSettingSingle.Name, smtpInstanceSettingSingle, instanceSettingsBundle);
+                    }
+                    catch (Exception)
+                    {
+                        throw;
+                    }
+                }
+                
+                var emailMessage = new MailMessage
+                {
+                    From = new MailAddress("noreply@relativity.one", "LTAS Billing Management"),
+                    Subject = $"{smtpEnvironmentValue.Split('-')[1].Split('.')[0].ToUpper()} - {emailSubject}",
+                    Body = htmlBody.ToString(),
+                    IsBodyHtml = true,                    
+                };
+
+                byte[] bytes;
+
+                using (var stream = new MemoryStream())
+                using (var writer = new StreamWriter(stream, Encoding.UTF8, 1024, true))
+                {
+                    // Write headers
+                    writer.WriteLine(string.Join(",", dt.Columns.Cast<DataColumn>().Select(column => column.ColumnName)));
+
+                    // Write rows
+                    foreach (DataRow row in dt.Rows)
+                    {
+                        writer.WriteLine(string.Join(",", row.ItemArray.Select(field => field?.ToString() ?? "")));
+                    }
+
+                    writer.Flush();
+                    bytes = stream.ToArray();
+                }
+
+                using (var attachmentStream = new MemoryStream(bytes))
+                {
+
+
+                    var attachment = new System.Net.Mail.Attachment(attachmentStream, attachmentName, "text/csv");
+                    emailMessage.Attachments.Add(attachment);
+                    emailMessage.To.Add(adminEmailAddress);
+                    emailMessage.ReplyToList.Add(new MailAddress(adminEmailAddress));
+
+                    using (var smtpClient = new SmtpClient())
+                    {
+                        smtpClient.Host = smtpServerValue;
+                        smtpClient.Port = smtpPortValue;
+                        smtpClient.EnableSsl = true;
+                        smtpClient.DeliveryMethod = SmtpDeliveryMethod.Network;
+                        smtpClient.DeliveryFormat = SmtpDeliveryFormat.SevenBit;
+                        smtpClient.UseDefaultCredentials = false;
+                        smtpClient.Credentials = new NetworkCredential(smtpUserValue, smtpPasswordValue);
+                        await smtpClient.SendMailAsync(emailMessage);
+                    }
                 }
             }
 

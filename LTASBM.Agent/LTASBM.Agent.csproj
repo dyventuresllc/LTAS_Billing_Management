@@ -42,8 +42,19 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Event Handlers\EH_PS_BillingReceipient.cs" />
+    <Compile Include="Handlers\BillingAPIHandler.cs" />
+    <Compile Include="Handlers\TokenHandler.cs" />
+    <Compile Include="Logging\ITASLogger.cs" />
+    <Compile Include="Logging\ITASLoggerFactory.cs" />
+    <Compile Include="Logging\LTASLogger.cs" />
     <Compile Include="LTASBillingAgent.cs" />
     <Compile Include="Handlers\MessageHandler.cs" />
+    <Compile Include="Managers\BillingManager.cs" />
+    <Compile Include="Managers\ReportingManager.cs" />
+    <Compile Include="Models\BilingDetails.cs" />
+    <Compile Include="Models\Metadata\MetadataFields.cs" />
+    <Compile Include="Models\Metadata\MetadataValidator.cs" />
     <Compile Include="Models\Users.cs" />
     <Compile Include="Models\Workspaces.cs" />
     <Compile Include="Models\Matters.cs" />
@@ -63,6 +74,9 @@
     </PackageReference>
     <PackageReference Include="Relativity.Agent">
       <Version>17.0.4</Version>
+    </PackageReference>
+    <PackageReference Include="Relativity.EventHandler">
+      <Version>17.0.2</Version>
     </PackageReference>
     <PackageReference Include="Relativity.ObjectManager">
       <Version>12.1.171.20</Version>

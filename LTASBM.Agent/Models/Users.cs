@@ -17,4 +17,15 @@
         public string BillingUserLastName { get; set;}  
         public string BillingUserEmailAddress { get; set;}
     }
+
+    public class BillingReportUsers
+    {
+        public int WID { get; set; }
+        public int MID { get; set; }
+        public int UserID { get;set; }
+        public string DateKey { get; set; } 
+        public int GroupID { get; set; } 
+        
+    }
+
 }
